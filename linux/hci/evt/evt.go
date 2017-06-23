@@ -53,3 +53,77 @@ func (e LEAdvertisingReport) RSSI(i int) int8 {
 	}
 	return int8(e[2+int(e.NumReports())*9+l+i])
 }
+
+func (e InquiryResult) NumResponses() uint8 { return e[0] }
+func (e InquiryResult) BDADDR(i int) [6]byte {
+	b := [6]byte{}
+	copy(b[:], e[1+i*14:])
+	return b
+}
+func (e InquiryResult) PageScanRepetitionMode(i int) uint8 {
+	return uint8(e[1+6+i*14])
+}
+func (e InquiryResult) ClassOfDevice(i int) [3]byte {
+	b := [3]byte{}
+	copy(b[:], e[1+9+i*14:])
+	return b
+}
+func (e InquiryResult) ClockOffset(i int) uint16 {
+	return binary.LittleEndian.Uint16(e[1+12+i*14:])
+}
+func (e InquiryResult) RSSI(i int) uint8 {
+	return 0
+}
+func (e InquiryResult) ExtendedInquiryResponse() [240]byte {
+	return [240]byte{}
+}
+
+func (e InquiryResultwithRSSI) NumResponses() uint8 { return e[0] }
+func (e InquiryResultwithRSSI) BDADDR(i int) [6]byte {
+	b := [6]byte{}
+	copy(b[:], e[1+i*15:])
+	return b
+}
+func (e InquiryResultwithRSSI) PageScanRepetitionMode(i int) uint8 {
+	return uint8(e[1+6+i*15])
+}
+func (e InquiryResultwithRSSI) ClassOfDevice(i int) [3]byte {
+	b := [3]byte{}
+	copy(b[:], e[1+9+i*15:])
+	return b
+}
+func (e InquiryResultwithRSSI) ClockOffset(i int) uint16 {
+	return binary.LittleEndian.Uint16(e[1+12+i*15:])
+}
+func (e InquiryResultwithRSSI) RSSI(i int) uint8 {
+	return uint8(e[1+14+i*15])
+}
+func (e InquiryResultwithRSSI) ExtendedInquiryResponse() [240]byte {
+	return [240]byte{}
+}
+
+func (e ExtendedInquiry) NumResponses() uint8 { return e[0] }
+func (e ExtendedInquiry) BDADDR(i int) [6]byte {
+	b := [6]byte{}
+	copy(b[:], e[1:])
+	return b
+}
+func (e ExtendedInquiry) PageScanRepetitionMode(i int) uint8 {
+	return uint8(e[1+6])
+}
+func (e ExtendedInquiry) ClassOfDevice(i int) [3]byte {
+	b := [3]byte{}
+	copy(b[:], e[1+9:])
+	return b
+}
+func (e ExtendedInquiry) ClockOffset(i int) uint16 {
+	return binary.LittleEndian.Uint16(e[1+12:])
+}
+func (e ExtendedInquiry) RSSI(i int) uint8 {
+	return uint8(e[1+14])
+}
+func (e ExtendedInquiry) ExtendedInquiryResponse() [240]byte {
+	b := [240]byte{}
+	copy(b[:], e[1+15:])
+	return b
+}

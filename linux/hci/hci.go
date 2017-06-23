@@ -89,13 +89,16 @@ type HCI struct {
 	// adHist and adLast track the history of past scannable advertising packets.
 	// Controller delivers AD(Advertising Data) and SR(Scan Response) separately
 	// through HCI. Upon recieving an AD, no matter it's scannable or not, we
-	// pass a Advertisment (AD only) to advHandler immediately.
+	// pass a Advertisement (AD only) to advHandler immediately.
 	// Upon recieving a SR, we search the AD history for the AD from the same
-	// device, and pass the Advertisiement (AD+SR) to advHandler.
+	// device, and pass the Advertisement (AD+SR) to advHandler.
 	// The adHist and adLast are allocated in the Scan().
 	advHandler ble.AdvHandler
 	adHist     []*Advertisement
 	adLast     int
+
+	// Inquiry scan handler
+	inqHandler ble.InqHandler
 
 	// Host to Controller Data Flow Control Packet-based Data flow control for LE-U [Vol 2, Part E, 4.1.1]
 	// Minimum 27 bytes. 4 bytes of L2CAP Header, and 23 bytes Payload from upper layer (ATT)
@@ -134,6 +137,12 @@ func (h *HCI) Init() error {
 	// evt.AuthenticatedPayloadTimeoutExpiredCode:   todo),
 	// evt.LEReadRemoteUsedFeaturesCompleteSubCode:   todo),
 	// evt.LERemoteConnectionParameterRequestSubCode: todo),
+
+	// BD/EDR
+	h.subh[evt.InquiryCompleteCode] = h.handleInquiryComplete
+	h.subh[evt.InquiryResultCode] = h.handleInquiryResult
+	h.subh[evt.InquiryResultwithRSSICode] = h.handleInquiryWithRSSI
+	h.subh[evt.ExtendedInquiryEventCode] = h.handleExtendedInquiry
 
 	skt, err := socket.NewSocket(h.id)
 	if err != nil {
@@ -514,4 +523,45 @@ func (h *HCI) handleLELongTermKeyRequest(b []byte) error {
 	return h.Send(&cmd.LELongTermKeyRequestNegativeReply{
 		ConnectionHandle: e.ConnectionHandle(),
 	}, nil)
+}
+
+func (h *HCI) handleInquiryComplete(b []byte) error {
+	return nil
+}
+
+func (h *HCI) handleExtendedInquiry(b []byte) error {
+	if h.inqHandler == nil {
+		return nil
+	}
+
+	// always a single response [Vol2, 7.7.38]
+	go h.inqHandler(newInquiry(evt.ExtendedInquiry(b), 0))
+
+	return nil
+}
+
+func (h *HCI) handleInquiryResult(b []byte) error {
+	if h.inqHandler == nil {
+		return nil
+	}
+
+	e := evt.InquiryResult(b)
+	for i := 0; i < int(e.NumResponses()); i++ {
+		go h.inqHandler(newInquiry(e, i))
+	}
+
+	return nil
+}
+
+func (h *HCI) handleInquiryWithRSSI(b []byte) error {
+	if h.inqHandler == nil {
+		return nil
+	}
+
+	e := evt.InquiryResultwithRSSI(b)
+	for i := 0; i < int(e.NumResponses()); i++ {
+		go h.inqHandler(newInquiry(e, i))
+	}
+
+	return nil
 }

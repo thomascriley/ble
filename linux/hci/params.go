@@ -18,6 +18,9 @@ type params struct {
 	advParams  cmd.LESetAdvertisingParameters
 	scanParams cmd.LESetScanParameters
 	connParams cmd.LECreateConnection
+
+	inquiry       cmd.Inquiry
+	inquiryCancel cmd.InquiryCancel
 }
 
 func (p *params) init() {

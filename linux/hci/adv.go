@@ -37,7 +37,7 @@ type Advertisement struct {
 	p *adv.Packet
 }
 
-// setScanResponse ssociate sca response to the existing advertisement.
+// setScanResponse associate the response to the existing advertisement.
 func (a *Advertisement) setScanResponse(sr *Advertisement) {
 	a.sr = sr
 	a.p = nil // clear the cached.

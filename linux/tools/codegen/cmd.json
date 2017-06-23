@@ -1,6 +1,124 @@
 {
         "LinkControl": [
                 {
+                        "Name": "Inquiry",
+                        "Spec": "Vol 2, Part E, 7.1.1",
+                        "OGF": "0x01",
+                        "OCF": "0x0001",
+                        "Len": 5,
+                        "Param": [
+                                {
+                                        "LAP": "[3]byte"
+                                },
+                                {
+                                        "Inquiry Length": "uint8"
+                                },
+                                {
+                                        "Num Responses": "uint8"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Inquiry Complete"
+                        ]
+                },
+                {
+                        "Name": "Inquiry Cancel",
+                        "Spec": "Vol 2, Part E, 7.1.2",
+                        "OGF": "0x01",
+                        "OCF": "0x0002",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Periodic Inquiry Mode",
+                        "Spec": "Vol 2, Part E, 7.1.3",
+                        "OGF": "0x01",
+                        "OCF": "0x0003",
+                        "Len": 9,
+                        "Param": [
+                                {
+                                        "Max Period Length": "uint16"
+                                },
+                                {
+                                        "Min Period Length": "uint16"
+                                },
+                                {
+                                        "LAP": "[3]byte"
+                                },
+                                {
+                                        "Inquiry Length": "uint8"
+                                },
+                                {
+                                        "Num Responses": "uint8"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete",
+                                "Inquiry Complete"
+                        ]
+                },
+                {
+                        "Name": "Exit Periodic Inquiry Mode",
+                        "Spec": "Vol 2, Part E, 7.1.4",
+                        "OGF": "0x01",
+                        "OCF": "0x0004",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Create Connection",
+                        "Spec": "Vol 2, Part E, 7.1.5",
+                        "OGF": "0x01",
+                        "OCF": "0x0005",
+                        "Len": 0,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Packet Type":"uint16"
+                                },
+                                {
+                                        "Page Scan Repetition Mode":"uint8"
+                                },
+                                {
+                                        "Reserved":"uint8"
+                                },
+                                {
+                                        "Clock Offset":"uint16"
+                                },
+                                {
+                                        "Allow Role Switch":"uint8"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Connection Complete"
+                        ]
+                },
+                {
                         "Name": "Disconnect",
                         "Spec": "Vol 2, Part E, 7.1.6",
                         "OGF": "0x01",
@@ -20,6 +138,353 @@
                         ]
                 },
                 {
+                        "Name": "Create Connection Cancel",
+                        "Spec": "Vol 2, Part E, 7.1.7",
+                        "OGF": "0x01",
+                        "OCF": "0x0008",
+                        "Len": 6,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Accept Connection Request",
+                        "Spec": "Vol 2, Part E, 7.1.8",
+                        "OGF": "0x01",
+                        "OCF": "0x0009",
+                        "Len": 7,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Role": "uint8"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Connection Complete",
+                                "Synchronous Connection Complete"
+                        ]
+                },
+                {
+                        "Name": "Reject Connection Request",
+                        "Spec": "Vol 2, Part E, 7.1.9",
+                        "OGF": "0x01",
+                        "OCF": "0x000A",
+                        "Len": 7,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Reason": "uint8"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Connection Complete",
+                                "Synchronous Connection Complete"
+                        ]
+                },
+                {
+                        "Name": "Link Key Request Reply",
+                        "Spec": "Vol 2, Part E, 7.1.10",
+                        "OGF": "0x01",
+                        "OCF": "0x000B",
+                        "Len": 22,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Link Key": "[16]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status":"uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Link Key Request Negative Reply",
+                        "Spec": "Vol 2, Part E, 7.1.11",
+                        "OGF": "0x01",
+                        "OCF": "0x000C",
+                        "Len": 6,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status":"uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Events": [
+                                "Connection Complete"
+                        ]
+                },
+                {
+                        "Name": "Pin Code Request Reply",
+                        "Spec": "Vol 2, Part E, 7.1.12",
+                        "OGF": "0x01",
+                        "OCF": "0x000D",
+                        "Len": 23,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "PIN Code Length": "uint8"
+                                },
+                                {
+                                        "PIN Code": "[16]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status":"uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Events": [
+                                "Connection Complete"
+                        ]
+                },
+                {
+                        "Name": "Pin Code Request Negative Reply",
+                        "Spec": "Vol 2, Part E, 7.1.13",
+                        "OGF": "0x01",
+                        "OCF": "0x000E",
+                        "Len": 6,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status":"uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Change Connection Packet Type",
+                        "Spec": "Vol 2, Part E, 7.1.14",
+                        "OGF": "0x01",
+                        "OCF": "0x000F",
+                        "Len": 4,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Packet Type": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Connection Packet Type Changed"
+                        ]
+                },
+                {
+                        "Name": "Authentication Requested",
+                        "Spec": "Vol 2, Part E, 7.1.15",
+                        "OGF": "0x01",
+                        "OCF": "0x0011",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Link Key Request",
+                                "Pin Code Request",
+                                "Authentication Complete"
+                        ]
+                },
+                {
+                        "Name": "Set Connection Encryption",
+                        "Spec": "Vol 2, Part E, 7.1.16",
+                        "OGF": "0x01",
+                        "OCF": "0x0013",
+                        "Len": 3,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Encryption Enable": "uint8"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Encryption Change"
+                        ]
+                },
+                {
+                        "Name": "Change Connection Link Key",
+                        "Spec": "Vol 2, Part E, 7.1.17",
+                        "OGF": "0x01",
+                        "OCF": "0x0015",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Link Key Notification",
+                                "Change Connection Link Key Complete"
+                        ]
+                },
+                {
+                        "Name": "Master Link Key",
+                        "Spec": "Vol 2, Part E, 7.1.18",
+                        "OGF": "0x01",
+                        "OCF": "0x0017",
+                        "Len": 1,
+                        "Param": [
+                                {
+                                        "Key Flag": "uint8"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Master Link Key Complete"
+                        ]
+                },
+                {
+                        "Name": "Remote Name Request",
+                        "Spec": "Vol 2, Part E, 7.1.19",
+                        "OGF": "0x01",
+                        "OCF": "0x0019",
+                        "Len": 10,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Page Scan Repition Mode": "uint8"
+                                },
+                                {
+                                        "Reserved": "uint8"
+                                },
+                                {
+                                        "Clock Offset": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Remote Host Supported Features Notification",
+                                "Remote Name Request Complete"
+                        ]
+                },
+                {
+                        "Name": "Remote Name Request Cancel",
+                        "Spec": "Vol 2, Part E, 7.1.20",
+                        "OGF": "0x01",
+                        "OCF": "0x001A",
+                        "Len": 6,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status":"uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Remote Supported Features",
+                        "Spec": "Vol 2, Part E, 7.1.21",
+                        "OGF": "0x01",
+                        "OCF": "0x001B",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Read Remote Supported Features Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Remote Extended Features",
+                        "Spec": "Vol 2, Part E, 7.1.22",
+                        "OGF": "0x01",
+                        "OCF": "0x001C",
+                        "Len": 3,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Page Number": "uint8"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Read Remote Extended Features Complete"
+                        ]
+                },
+                {
                         "Name": "Read Remote Version Information",
                         "Spec": "Vol 2, Part E, 7.1.23",
                         "OGF": "0x01",
@@ -35,9 +500,286 @@
                                 "Command Status",
                                 "Read Remote Version Information Complete"
                         ]
+                },
+                {
+                        "Name": "Read Clock Offset",
+                        "Spec": "Vol 2, Part E, 7.1.24",
+                        "OGF": "0x01",
+                        "OCF": "0x001F",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Read Clock Offset Complete"
+                        ]
                 }
         ],
         "LinkPolicy": [
+                {
+                        "Name": "Hold Mode",
+                        "Spec": "Vol 2, Part E, 7.2.1",
+                        "OGF": "0x02",
+                        "OCF": "0x0001",
+                        "Len": 6,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Hold Mode Max Interval": "uint16"
+                                },
+                                {
+                                        "Hold Mode Min Interval": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Mode Change"
+                        ]
+                },
+                {
+                        "Name": "Sniff Mode",
+                        "Spec": "Vol 2, Part E, 7.2.2",
+                        "OGF": "0x02",
+                        "OCF": "0x0003",
+                        "Len": 10,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Sniff Mode Max Interval": "uint16"
+                                },
+                                {
+                                        "Sniff Mode Min Interval": "uint16"
+                                },
+                                {
+                                        "Sniff Attempt": "uint16"
+                                },
+                                {
+                                        "Sniff Timeout": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Mode Change"
+                        ]
+                },
+                {
+                        "Name": "Exit Sniff Mode",
+                        "Spec": "Vol 2, Part E, 7.2.3",
+                        "OGF": "0x02",
+                        "OCF": "0x0004",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Mode Change"
+                        ]
+                },
+                {
+                        "Name": "Park State",
+                        "Spec": "Vol 2, Part E, 7.2.4",
+                        "OGF": "0x02",
+                        "OCF": "0x0005",
+                        "Len": 6,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Beacon Max Interval": "uint16"
+                                },
+                                {
+                                        "Beacon Min Interval": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Mode Change"
+                        ]
+                },
+                {
+                        "Name": "Exit Park State",
+                        "Spec": "Vol 2, Part E, 7.2.5",
+                        "OGF": "0x02",
+                        "OCF": "0x0006",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Mode Change"
+                        ]
+                },
+                {
+                        "Name": "QoS Setup",
+                        "Spec": "Vol 2, Part E, 7.2.6",
+                        "OGF": "0x02",
+                        "OCF": "0x0007",
+                        "Len": 20,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Flags": "uint8"
+                                },
+                                {
+                                        "Service Type": "uint8"
+                                },
+                                {
+                                        "Token Rate": "uint32"
+                                },
+                                {
+                                        "Beak Bandwidth": "uint32"
+                                },
+                                {
+                                        "Latency": "uint32"
+                                },
+                                {
+                                        "Delay Variation": "uint32"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "QoS Setup Complete"
+                        ]
+                },
+                {
+                        "Name": "Role Discovery",
+                        "Spec": "Vol 2, Part E, 7.2.7",
+                        "OGF": "0x02",
+                        "OCF": "0x0009",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status":"uint8"
+                                },
+                                {
+                                        "Connection Handle":"uint16"
+                                },
+                                {
+                                        "Current Role":"uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Switch Role",
+                        "Spec": "Vol 2, Part E, 7.2.8",
+                        "OGF": "0x02",
+                        "OCF": "0x000B",
+                        "Len": 7,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Role":"uint8"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Role Change"
+                        ]
+                },
+                {
+                        "Name": "Read Link Policy Settings",
+                        "Spec": "Vol 2, Part E, 7.2.9",
+                        "OGF": "0x02",
+                        "OCF": "0x000C",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status":"uint8"
+                                },
+                                {
+                                        "Connection Handle":"uint16"
+                                },
+                                {
+                                        "Link Policy Settings":"uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Link Policy Settings",
+                        "Spec": "Vol 2, Part E, 7.2.10",
+                        "OGF": "0x02",
+                        "OCF": "0x000D",
+                        "Len": 4,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Link Policy Settings":"uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status":"uint8"
+                                },
+                                {
+                                        "Connection Handle":"uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Default Link Policy Settings",
+                        "Spec": "Vol 2, Part E, 7.2.11",
+                        "OGF": "0x02",
+                        "OCF": "0x000E",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Default Link Policy Settings": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
                 {
                         "Name": "Write Default Link Policy Settings",
                         "Spec": "Vol 2, Part E, 7.2.12",
@@ -56,6 +798,77 @@
                         ],
                         "Events": [
                                 "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Flow Specification",
+                        "Spec": "Vol 2, Part E, 7.2.13",
+                        "OGF": "0x02",
+                        "OCF": "0x0010",
+                        "Len": 21,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Flags": "uint8"
+                                },
+                                {
+                                        "Flow Direction": "uint8"
+                                },
+                                {
+                                        "Service Type": "uint8"
+                                },
+                                {
+                                        "Token Rate": "uint32"
+                                },
+                                {
+                                        "Token Bucket Size": "uint32"
+                                },
+                                {
+                                        "Peak Bandwidth": "uint32"
+                                },
+                                {
+                                        "Access Latency": "uint32"
+                                }
+                        ],
+                        "Return": [],
+                        "Events": [
+                                "Command Status",
+                                "Flow Specification Complete"
+                        ]
+                },
+                {
+                        "Name": "Sniff Subrating",
+                        "Spec": "Vol 2, Part E, 7.2.14",
+                        "OGF": "0x02",
+                        "OCF": "0x0011",
+                        "Len": 8,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Maximum Latency": "uint16"
+                                },
+                                {
+                                        "Minimum Remote Latency": "uint16"
+                                },
+                                {
+                                        "Minimum Local Timeout": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status":"uint8"
+                                },
+                                {
+                                        "Connection Handle":"uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete",
+                                "Sniff Subrating"
                         ]
                 }
         ],
@@ -84,12 +897,294 @@
                         "Name": "Reset",
                         "Spec": "Vol 2, Part E, 7.3.2",
                         "OGF": "0x03",
-                        "OCF": "0x003",
+                        "OCF": "0x0003",
                         "Len": 0,
-                        "Param": [],
+                        "Param":[],
                         "Return": [
                                 {
                                         "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Set Event Filter",
+                        "Spec": "Vol 2, Part E, 7.3.3",
+                        "OGF": "0x03",
+                        "OCF": "0x0005",
+                        "Len": 9,
+                        "Param": [
+                                {
+                                        "Filter Type": "uint8"
+                                },
+                                {
+                                        "Filter Condition Type": "uint8"
+                                },
+                                {
+                                        "Condition": "[7]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Flush",
+                        "Spec": "Vol 2, Part E, 7.3.4",
+                        "OGF": "0x03",
+                        "OCF": "0x0008",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Flush Occcurred",
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read PIN Type",
+                        "Spec": "Vol 2, Part E, 7.3.5",
+                        "OGF": "0x03",
+                        "OCF": "0x0009",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "PIN Type": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write PIN Type",
+                        "Spec": "Vol 2, Part E, 7.3.6",
+                        "OGF": "0x03",
+                        "OCF": "0x000A",
+                        "Len": 1,
+                        "Param": [
+                                {
+                                        "PIN Type": "uint8"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Create New Unit Key",
+                        "Spec": "Vol 2, Part E, 7.3.7",
+                        "OGF": "0x03",
+                        "OCF": "0x000B",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Stored Link Key",
+                        "Spec": "Vol 2, Part E, 7.3.8",
+                        "OGF": "0x03",
+                        "OCF": "0x000D",
+                        "Len": 7,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Read All Flag": "uint8"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Max Num Keys": "uint16"
+                                },
+                                {
+                                        "Num Keys Read": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete",
+                                "Return Link Keys"
+                        ]
+                },
+                {
+                        "Name": "Write Stored Link Key",
+                        "Spec": "Vol 2, Part E, 7.3.9",
+                        "OGF": "0x03",
+                        "OCF": "0x0011",
+                        "Len": 23,
+                        "Param": [
+                                {
+                                        "Num Keys To Write": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Link Key":"[16]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Num Keys Written": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Delete Stored Link Key",
+                        "Spec": "Vol 2, Part E, 7.3.10",
+                        "OGF": "0x03",
+                        "OCF": "0x0012",
+                        "Len": 7,
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Delete All Flag":"uint8"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Num Keys Deleted": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Local Name",
+                        "Spec": "Vol 2, Part E, 7.3.11",
+                        "OGF": "0x03",
+                        "OCF": "0x0013",
+                        "Len": 248,
+                        "Param": [
+                                {
+                                        "Local Name": "[248]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Local Name",
+                        "Spec": "Vol 2, Part E, 7.3.12",
+                        "OGF": "0x03",
+                        "OCF": "0x0014",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Local Name": "[248]byte"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Connection Accept Timeout",
+                        "Spec": "Vol 2, Part E, 7.3.13",
+                        "OGF": "0x03",
+                        "OCF": "0x0015",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Conn Accept Timeout": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Connection Accept Timeout",
+                        "Spec": "Vol 2, Part E, 7.3.14",
+                        "OGF": "0x03",
+                        "OCF": "0x0016",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Conn Accept Timeout": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Page Timeout",
+                        "Spec": "Vol 2, Part E, 7.3.15",
+                        "OGF": "0x03",
+                        "OCF": "0x0017",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Page Timeout": "uint16"
                                 }
                         ],
                         "Events": [
@@ -117,6 +1212,188 @@
                         ]
                 },
                 {
+                        "Name": "Read Scan Enable",
+                        "Spec": "Vol 2, Part E, 7.3.17",
+                        "OGF": "0x03",
+                        "OCF": "0x0019",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Scan Enable": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Scan Enable",
+                        "Spec": "Vol 2, Part E, 7.3.18",
+                        "OGF": "0x03",
+                        "OCF": "0x001A",
+                        "Len": 1,
+                        "Param": [
+                                {
+                                        "Scan Enable": "uint8"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Page Scan Activity",
+                        "Spec": "Vol 2, Part E, 7.3.19",
+                        "OGF": "0x03",
+                        "OCF": "0x001B",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Page Scan Interval": "uint16"
+                                },
+                                {
+                                        "Page Scan Window": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Page Scan Activity",
+                        "Spec": "Vol 2, Part E, 7.3.20",
+                        "OGF": "0x03",
+                        "OCF": "0x001C",
+                        "Len": 4,
+                        "Param": [
+                                {
+                                        "Page Scan Interval": "uint16"
+                                },
+                                {
+                                        "Page Scan Window": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Inquiry Scan Activity",
+                        "Spec": "Vol 2, Part E, 7.3.21",
+                        "OGF": "0x03",
+                        "OCF": "0x001D",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Inquiry Scan Interval": "uint16"
+                                },
+                                {
+                                        "Inquiry Scan Window": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Inquiry Scan Activity",
+                        "Spec": "Vol 2, Part E, 7.3.22",
+                        "OGF": "0x03",
+                        "OCF": "0x001E",
+                        "Len": 4,
+                        "Param": [
+                                {
+                                        "Inquiry Scan Interval": "uint16"
+                                },
+                                {
+                                        "Inquiry Scan Window": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Authentication Enable",
+                        "Spec": "Vol 2, Part E, 7.3.23",
+                        "OGF": "0x03",
+                        "OCF": "0x001F",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Authentication Enable": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Authentication Enable",
+                        "Spec": "Vol 2, Part E, 7.3.24",
+                        "OGF": "0x03",
+                        "OCF": "0x0020",
+                        "Len": 0,
+                        "Param": [
+                                {
+                                        "Authentication Enable": "uint8"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Class Of Device",
+                        "Spec": "Vol 2, Part E, 7.3.25",
+                        "OGF": "0x03",
+                        "OCF": "0x0023",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "ClassOfDevice": "[3]byte"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
                         "Name": "Write Class Of Device",
                         "Spec": "Vol 2, Part E, 7.3.26",
                         "OGF": "0x03",
@@ -125,6 +1402,172 @@
                         "Param": [
                                 {
                                         "ClassOfDevice": "[3]byte"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Voice Setting",
+                        "Spec": "Vol 2, Part E, 7.3.27",
+                        "OGF": "0x03",
+                        "OCF": "0x0025",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Voice Setting": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Voice Setting",
+                        "Spec": "Vol 2, Part E, 7.3.28",
+                        "OGF": "0x03",
+                        "OCF": "0x0026",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Voice Setting": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Automatic Flush Timeout",
+                        "Spec": "Vol 2, Part E, 7.3.29",
+                        "OGF": "0x03",
+                        "OCF": "0x0027",
+                        "Len": 2,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Flush Timeout": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Automatic Flush Timeout",
+                        "Spec": "Vol 2, Part E, 7.3.30",
+                        "OGF": "0x03",
+                        "OCF": "0x0028",
+                        "Len": 4,
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Flush Timeout": "uint16"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Num Broadcast Retransmissions",
+                        "Spec": "Vol 2, Part E, 7.3.31",
+                        "OGF": "0x03",
+                        "OCF": "0x0029",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Num Broadcast Retransmissions": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Num Broadcast Retransmissions",
+                        "Spec": "Vol 2, Part E, 7.3.32",
+                        "OGF": "0x03",
+                        "OCF": "0x002A",
+                        "Len": 1,
+                        "Param": [
+                                {
+                                        "Num Broadcast Retransmissions": "uint8"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Hold Mode Activity",
+                        "Spec": "Vol 2, Part E, 7.3.33",
+                        "OGF": "0x03",
+                        "OCF": "0x002B",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Hold Mode Activity": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Hold Mode Activity",
+                        "Spec": "Vol 2, Part E, 7.3.34",
+                        "OGF": "0x03",
+                        "OCF": "0x002C",
+                        "Len": 0,
+                        "Param": [
+                                {
+                                        "Hold Mode Activity": "uint8"
                                 }
                         ],
                         "Return": [
@@ -156,6 +1599,67 @@
                                 },
                                 {
                                         "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Transmit Power Level": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Read Synchronous Flow Control Enable",
+                        "Spec": "Vol 2, Part E, 7.3.36",
+                        "OGF": "0x03",
+                        "OCF": "0x002E",
+                        "Len": -1,
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Synchronous Flow Control Enable": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Write Synchronous Flow Control Enable",
+                        "Spec": "Vol 2, Part E, 7.3.37",
+                        "OGF": "0x03",
+                        "OCF": "0x002F",
+                        "Len": 0,
+                        "Param": [
+                                {
+                                        "Synchronous Flow Control Enable": "uint8"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "Events": [
+                                "Command Complete"
+                        ]
+                },
+                {
+                        "Name": "Set Controller to Host Flow Control",
+                        "Spec": "Vol 2, Part E, 7.3.38",
+                        "OGF": "0x03",
+                        "OCF": "0x0031",
+                        "Len": 0,
+                        "Param": [
+                                {
+                                        "Flow Control Enable": "uint8"
+                                }
+                        ],
+                        "Return": [
+                                {
+                                        "Status": "uint8"
                                 }
                         ],
                         "Events": [
