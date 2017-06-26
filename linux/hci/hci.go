@@ -142,7 +142,8 @@ func (h *HCI) Init() error {
 	h.subh[evt.InquiryCompleteCode] = h.handleInquiryComplete
 	h.subh[evt.InquiryResultCode] = h.handleInquiryResult
 	h.subh[evt.InquiryResultwithRSSICode] = h.handleInquiryWithRSSI
-	h.subh[evt.ExtendedInquiryEventCode] = h.handleExtendedInquiry
+	h.subh[evt.ExtendedInquiryCode] = h.handleExtendedInquiry
+	h.subh[evt.ConnectionCompleteCode] = h.handleConnectionComplete
 
 	skt, err := socket.NewSocket(h.id)
 	if err != nil {
@@ -563,5 +564,23 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 		go h.inqHandler(newInquiry(e, i))
 	}
 
+	return nil
+}
+
+func (h *HCI) handleConnectionComplete(b []byte) error {
+	e := evt.ConnectionComplete(b)
+	c := newConn(h, e)
+	h.muConns.Lock()
+	h.conns[e.ConnectionHandle()] = c
+	h.muConns.Unlock()
+
+	if e.Status() == 0x00 {
+		h.chMasterConn <- c
+		return nil
+	}
+	if ErrCommand(e.Status()) == ErrConnID {
+		// The connection was canceled successfully.
+		return nil
+	}
 	return nil
 }

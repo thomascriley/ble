@@ -11,16 +11,21 @@ import (
 
 	"github.com/currantlabs/ble"
 	"github.com/currantlabs/ble/linux/hci/cmd"
-	"github.com/currantlabs/ble/linux/hci/evt"
 	"github.com/pkg/errors"
 )
+
+type ConnectionCompleteEvent interface {
+	PeerAddress() [6]byte
+	ConnectionHandle() uint16
+	Role() uint8
+}
 
 // Conn ...
 type Conn struct {
 	hci *HCI
 	ctx context.Context
 
-	param evt.LEConnectionComplete
+	param ConnectionCompleteEvent
 
 	// While MTU is the maximum size of payload data that the upper layer (ATT)
 	// can accept, the MPS is the maximum PDU payload size this L2CAP implementation
@@ -67,7 +72,7 @@ type Conn struct {
 	chDone chan struct{}
 }
 
-func newConn(h *HCI, param evt.LEConnectionComplete) *Conn {
+func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 	c := &Conn{
 		hci:   h,
 		ctx:   context.Background(),
@@ -116,25 +121,26 @@ func (c *Conn) SetContext(ctx context.Context) {
 }
 
 // Read copies re-assembled L2CAP PDUs into sdu.
-func (c *Conn) Read(sdu []byte) (n int, err error) {
+func (c *Conn) ReadSDU(sdu []byte) (att bool, n int, err error) {
 	p, ok := <-c.chInPDU
 	if !ok {
-		return 0, errors.Wrap(io.ErrClosedPipe, "input channel closed")
+		return true, 0, errors.Wrap(io.ErrClosedPipe, "input channel closed")
 	}
 	if len(p) == 0 {
-		return 0, errors.Wrap(io.ErrUnexpectedEOF, "recieved empty packet")
+		return true, 0, errors.Wrap(io.ErrUnexpectedEOF, "recieved empty packet")
 	}
 
 	// Assume it's a B-Frame.
 	slen := p.dlen()
 	data := p.payload()
+	cid := p.cid()
 	if c.leFrame {
 		// LE-Frame.
 		slen = leFrameHdr(p).slen()
 		data = leFrameHdr(p).payload()
 	}
 	if cap(sdu) < slen {
-		return 0, errors.Wrapf(io.ErrShortBuffer, "payload recieved exceeds sdu buffer")
+		return true, 0, errors.Wrapf(io.ErrShortBuffer, "payload recieved exceeds sdu buffer")
 	}
 	buf := bytes.NewBuffer(sdu)
 	buf.Reset()
@@ -143,7 +149,7 @@ func (c *Conn) Read(sdu []byte) (n int, err error) {
 		p := <-c.chInPDU
 		buf.Write(pdu(p).payload())
 	}
-	return slen, nil
+	return cid == cidLEAtt, slen, nil
 }
 
 // Write breaks down a L2CAP SDU into segmants [Vol 3, Part A, 7.3.1]
@@ -259,15 +265,18 @@ func (c *Conn) recombine() error {
 	}
 
 	// TODO: support dynamic or assigned channels for LE-Frames.
-	switch p.cid() {
-	case cidLEAtt:
+	cid := p.cid()
+	switch {
+	case cid == cidLEAtt:
 		c.chInPDU <- p
-	case cidLESignal:
+	case cid == cidLESignal:
 		c.handleSignal(p)
-	case cidSMP:
+	case cid == cidSMP:
 		c.handleSMP(p)
+	case cid >= cidDynamicStart:
+		c.chInPDU <- p
 	default:
-		logger.Info("recombine()", "unrecognized CID", fmt.Sprintf("%04X, [%X]", p.cid(), p))
+		logger.Info("recombine()", "unrecognized CID", fmt.Sprintf("%04X, [%X]", cid, p))
 	}
 	return nil
 }

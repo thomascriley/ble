@@ -2,6 +2,7 @@ package linux
 
 import (
 	"log"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -151,11 +152,37 @@ func (d *Device) Scan(ctx context.Context, allowDup bool, h ble.AdvHandler) erro
 	return ctx.Err()
 }
 
+// Inquire starts inquiring for bluetooth devices broadcasting using br/edr
+func (d *Device) Inquire(ctx context.Context, numResponses int, h ble.InqHandler) error {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return errors.New("BR/EDR scanning requires a deadline be set")
+	}
+	length := deadline.Sub(time.Now()).Seconds() / 128
+	if err := d.HCI.SetInqHandler(h); err != nil {
+		return err
+	}
+	if err := d.HCI.Inquire(length, numResponses); err != nil {
+		return err
+	}
+	<-ctx.Done()
+	d.HCI.StopInquiry()
+	return ctx.Err()
+}
+
 // Dial ...
 func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	// d.HCI.Dial is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
 	cln, err := d.HCI.Dial(ctx, a)
+	return cln, errors.Wrap(err, "can't dial")
+}
+
+// DialBREDR dials a connection with a BR/EDR device
+func (d *Device) DialBREDR(ctx context.Context, a ble.Addr) (ble.Client, error) {
+	// d.HCI.DialBREDR is a blocking call, although most of time it should return immediately.
+	// But in case passing wrong device address or the device went non-connectable, it blocks.
+	cln, err := d.HCI.DialBREDR(ctx, a)
 	return cln, errors.Wrap(err, "can't dial")
 }
 

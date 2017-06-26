@@ -204,6 +204,13 @@ func (p *Client) DiscoverDescriptors(filter []ble.UUID, c *ble.Characteristic) (
 	return c.Descriptors, nil
 }
 
+// Read reads an ACL packet not attached to a characteristic
+func (p *Client) Read() ([]byte, error) {
+	p.Lock()
+	defer p.Unlock()
+	return p.ac.ReadP2P()
+}
+
 // ReadCharacteristic reads a characteristic value from a server. [Vol 3, Part G, 4.8.1]
 func (p *Client) ReadCharacteristic(c *ble.Characteristic) ([]byte, error) {
 	p.Lock()
@@ -212,11 +219,11 @@ func (p *Client) ReadCharacteristic(c *ble.Characteristic) ([]byte, error) {
 }
 
 // ReadLongCharacteristic reads a characteristic value which is longer than the MTU. [Vol 3, Part G, 4.8.3]
-func (p *Client) ReadLongCharacteristic(c *ble.Characteristic) ([]byte,error) {
+func (p *Client) ReadLongCharacteristic(c *ble.Characteristic) ([]byte, error) {
 	p.Lock()
 	defer p.Unlock()
 
-	buffer := make([]byte,512)
+	buffer := make([]byte, 512)
 	size := 0
 	part := 0
 
@@ -226,16 +233,23 @@ func (p *Client) ReadLongCharacteristic(c *ble.Characteristic) ([]byte,error) {
 			return nil, err
 		}
 		part = len(read)
-		copy(buffer[size:],read)
+		copy(buffer[size:], read)
 		size += part
 
-		if part < p.conn.TxMTU()-1	{
+		if part < p.conn.TxMTU()-1 {
 			break
 		}
 
-		read, err = p.ac.ReadBlob(c.ValueHandle,uint16(size))
+		read, err = p.ac.ReadBlob(c.ValueHandle, uint16(size))
 	}
 	return buffer[:size], nil
+}
+
+// Write writes to the device
+func (p *Client) Write(v []byte) error {
+	p.Lock()
+	defer p.Unlock()
+	return p.ac.WriteP2P(v)
 }
 
 // WriteCharacteristic writes a characteristic value to a server. [Vol 3, Part G, 4.9.3]

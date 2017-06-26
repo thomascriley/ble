@@ -34,7 +34,12 @@ func (c *InquiryCancel) String() string {
 func (c *InquiryCancel) OpCode() int { return 0x01<<10 | 0x0002 }
 
 // Len returns the length of the command.
-func (c *InquiryCancel) Len() int { return -1 }
+func (c *InquiryCancel) Len() int { return 0 }
+
+// Marshal serializes the command parameters into binary form.
+func (c *InquiryCancel) Marshal(b []byte) error {
+	return marshal(c, b)
+}
 
 // InquiryCancelRP returns the return parameter of Inquiry Cancel
 type InquiryCancelRP struct {
@@ -92,7 +97,12 @@ func (c *ExitPeriodicInquiryMode) String() string {
 func (c *ExitPeriodicInquiryMode) OpCode() int { return 0x01<<10 | 0x0004 }
 
 // Len returns the length of the command.
-func (c *ExitPeriodicInquiryMode) Len() int { return -1 }
+func (c *ExitPeriodicInquiryMode) Len() int { return 0 }
+
+// Marshal serializes the command parameters into binary form.
+func (c *ExitPeriodicInquiryMode) Marshal(b []byte) error {
+	return marshal(c, b)
+}
 
 // ExitPeriodicInquiryModeRP returns the return parameter of Exit Periodic Inquiry Mode
 type ExitPeriodicInquiryModeRP struct {

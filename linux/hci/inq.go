@@ -6,8 +6,7 @@ import (
 	"github.com/currantlabs/ble"
 )
 
-// InquiryEvent basic structure of possible Inquiry events such as InquiryResult,
-// InquiryResultwithRSSI and ExtendedInquiry
+// InquiryEvent interface that wraps methods common to all inquiry events
 type InquiryEvent interface {
 	NumResponses() uint8
 	BDADDR(i int) [6]byte
@@ -52,6 +51,10 @@ func (i *Inquiry) RSSI() int {
 
 // Address returns the address of the remote peripheral.
 func (i *Inquiry) Address() ble.Addr {
-	b := i.e.BDADDR(a.i)
+	b := i.e.BDADDR(i.i)
 	return net.HardwareAddr([]byte{b[5], b[4], b[3], b[2], b[1], b[0]})
+}
+
+func (i *Inquiry) ExtendedInquiryResponse() [240]byte {
+	return i.e.ExtendedInquiryResponse()
 }

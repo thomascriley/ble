@@ -101,6 +101,15 @@ func Scan(ctx context.Context, allowDup bool, h AdvHandler, f AdvFilter) error {
 	return defaultDevice.Scan(ctx, allowDup, h2)
 }
 
+func Inquire(ctx context.Context, h InqHandler) error {
+	if defaultDevice == nil {
+		return ErrDefaultDevice
+	}
+	defer untrap(trap(ctx))
+
+	return defaultDevice.Inquire(ctx, h)
+}
+
 // Find ...
 func Find(ctx context.Context, allowDup bool, f AdvFilter) ([]Advertisement, error) {
 	if defaultDevice == nil {

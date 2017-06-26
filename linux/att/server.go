@@ -128,7 +128,7 @@ func (s *Server) Loop() {
 	go func() {
 		b := <-pool
 		for {
-			n, err := s.conn.Read(b.buf)
+			_, n, err := s.conn.ReadSDU(b.buf)
 			if n == 0 || err != nil {
 				close(seq)
 				close(s.chConfirm)

@@ -49,6 +49,12 @@ type Client interface {
 	// ReadRSSI retrieves the current RSSI value of remote peripheral. [Vol 2, Part E, 7.5.4]
 	ReadRSSI() int
 
+	// Read reads Point to Point bytes from the device
+	Read() ([]byte, error)
+
+	// Write writes Point to Point bytes to the device
+	Write([]byte) error
+
 	// ExchangeMTU set the ATT_MTU to the maximum possible value that can be supported by both devices [Vol 3, Part G, 4.3.1]
 	ExchangeMTU(rxMTU int) (txMTU int, err error)
 

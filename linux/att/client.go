@@ -17,6 +17,7 @@ type NotificationHandler interface {
 // Client implementa an Attribute Protocol Client.
 type Client struct {
 	l2c  ble.Conn
+	p2p  chan []byte
 	rspc chan []byte
 
 	rxBuf   []byte
@@ -29,6 +30,7 @@ type Client struct {
 func NewClient(l2c ble.Conn, h NotificationHandler) *Client {
 	c := &Client{
 		l2c:     l2c,
+		p2p:     make(chan []byte),
 		rspc:    make(chan []byte),
 		chTxBuf: make(chan []byte, 1),
 		rxBuf:   make([]byte, ble.MaxMTU),
@@ -128,6 +130,11 @@ func (c *Client) FindInformation(starth, endh uint16) (fmt int, data []byte, err
 		return 0x00, nil, ErrInvalidResponse
 	}
 	return int(rsp.Format()), rsp.InformationData(), nil
+}
+
+// ReadP2P reads point to point L2CAP data from the device
+func (c *Client) ReadP2P() ([]byte, error) {
+	return <-c.p2p, nil
 }
 
 // // HandleInformationList ...
@@ -366,6 +373,20 @@ func (c *Client) Write(handle uint16, value []byte) error {
 	return nil
 }
 
+// WriteCommandP2P requests the server to the write to the connection using P2P
+func (c *Client) WriteP2P(v []byte) error {
+	if len(v) > c.l2c.TxMTU() {
+		return ErrInvalidArgument
+	}
+
+	txBuf := <-c.chTxBuf
+	defer func() { c.chTxBuf <- txBuf }()
+
+	copy(txBuf, v)
+
+	return c.sendCmd(txBuf)
+}
+
 // WriteCommand requests the server to write the value of an attribute, typically
 // into a control-point attribute. [Vol 3, Part F, 3.4.5.3]
 func (c *Client) WriteCommand(handle uint16, value []byte) error {
@@ -492,7 +513,7 @@ func (c *Client) sendReq(b []byte) (rsp []byte, err error) {
 			}
 			// Sometimes when we connect to an Apple device, it sends
 			// ATT requests asynchronously to us. // In this case, we
-			// returns an ErrReqNotSupp response, and continue to wait
+			// return an ErrReqNotSupp response, and continue to wait
 			// the response to our request.
 			errRsp := newErrorResponse(rsp[0], 0x0000, ble.ErrReqNotSupp)
 			logger.Debug("client", "req", fmt.Sprintf("% X", b))
@@ -526,7 +547,7 @@ func (c *Client) Loop() {
 
 	confirmation := []byte{HandleValueConfirmationCode}
 	for {
-		n, err := c.l2c.Read(c.rxBuf)
+		att, n, err := c.l2c.ReadSDU(c.rxBuf)
 		logger.Debug("client", "rsp", fmt.Sprintf("% X", c.rxBuf[:n]))
 		if err != nil {
 			// We don't expect any error from the bearer (L2CAP ACL-U)
@@ -537,6 +558,12 @@ func (c *Client) Loop() {
 
 		b := make([]byte, n)
 		copy(b, c.rxBuf)
+
+		// If this is not an ATT connection id then it is assumed to be
+		// Point 2 Point data
+		if !att {
+			c.p2p <- b
+		}
 
 		if (b[0] != HandleValueNotificationCode) && (b[0] != HandleValueIndicationCode) {
 			c.rspc <- b

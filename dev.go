@@ -37,6 +37,9 @@ type Device interface {
 	// Scan starts scanning. Duplicated advertisements will be filtered out if allowDup is set to false.
 	Scan(ctx context.Context, allowDup bool, h AdvHandler) error
 
+	// Inquire starts a BR/EDR scan
+	Inquire(ctx context.Context, h InqHandler) error
+
 	// Dial ...
 	Dial(ctx context.Context, a Addr) (Client, error)
 }

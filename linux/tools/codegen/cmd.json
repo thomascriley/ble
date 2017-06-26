@@ -28,7 +28,8 @@
                         "Spec": "Vol 2, Part E, 7.1.2",
                         "OGF": "0x01",
                         "OCF": "0x0002",
-                        "Len": -1,
+                        "Len": 0,
+                        "Param": [],
                         "Return": [
                                 {
                                         "Status": "uint8"
@@ -76,7 +77,8 @@
                         "Spec": "Vol 2, Part E, 7.1.4",
                         "OGF": "0x01",
                         "OCF": "0x0004",
-                        "Len": -1,
+                        "Len": 0,
+                        "Param": [],
                         "Return": [
                                 {
                                         "Status": "uint8"

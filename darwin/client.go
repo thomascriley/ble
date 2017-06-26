@@ -1,6 +1,7 @@
 package darwin
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/currantlabs/ble"
@@ -211,6 +212,16 @@ func (cln *Client) ReadRSSI() int {
 		return 0
 	}
 	return rsp.rssi()
+}
+
+// Read reads Point to Point bytes from the device
+func (cln *Client) Read() ([]byte, error) {
+	return nil, errors.New("Not implemented")
+}
+
+// Read reads Point to Point bytes from the device
+func (cln *Client) Write(v []byte) error {
+	return errors.New("Not implemented")
 }
 
 // ExchangeMTU set the ATT_MTU to the maximum possible value that can be

@@ -191,6 +191,11 @@ func (d *Device) stopAdvertising() error {
 	return errors.Wrap(d.sendReq(d.pm, 9, nil).err(), "can't stop advertising")
 }
 
+// Scans for BR/EDR devices
+func (d *Device) Inquire(ctx context.Context, h ble.InqHandler) error {
+	return errors.New("Not implemented")
+}
+
 // Scan ...
 func (d *Device) Scan(ctx context.Context, allowDup bool, h ble.AdvHandler) error {
 	d.advHandler = h

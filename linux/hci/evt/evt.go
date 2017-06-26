@@ -127,3 +127,11 @@ func (e ExtendedInquiry) ExtendedInquiryResponse() [240]byte {
 	copy(b[:], e[1+15:])
 	return b
 }
+
+func (e ConnectionComplete) PeerAddress() [6]byte {
+	return e.BDADDR()
+}
+
+func (e ConnectionComplete) Role() uint8 {
+	return 0x00
+}
