@@ -11,7 +11,7 @@ type Conn interface {
 	io.WriteCloser
 
 	// Read reads service data unit from the connection
-	ReadSDU([]byte) (att bool, n int, err error)
+	Read([]byte) (n int, err error)
 
 	// Context returns the context that is used by this Conn.
 	Context() context.Context

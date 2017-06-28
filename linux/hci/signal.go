@@ -25,7 +25,23 @@ func (s sigCmd) len() int     { return int(binary.LittleEndian.Uint16(s[2:4])) }
 func (s sigCmd) data() []byte { return s[4 : 4+s.len()] }
 
 // Signal ...
-func (c *Conn) Signal(req Signal, rsp Signal) error {
+func (c *Conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
+
+	// The value of this timer is implementation-dependent but the minimum
+	// initial value is 1 second and the maximum initial value is 60 seconds.
+	// One RTX timer shall exist for each outstanding signaling request,
+	// including each Echo Request. The timer disappears on the final expiration,
+	// when the response is received, or the physical link is lost. The maximum
+	// elapsed time between the initial start of this timer and the initiation
+	// of channel termination (if no response is received) is 60 seconds.
+	// [Vol 3, Part A, 6.2.1 ]
+	if timeout > 60*time.Second {
+		return errors.New("The signal timeout can not be more than 60 seconds")
+	}
+	if timeout < 1*time.Second {
+		return errors.New("The signal timeout can not be less than a second")
+	}
+
 	data := req.Marshal()
 	buf := bytes.NewBuffer(make([]byte, 0))
 	binary.Write(buf, binary.LittleEndian, uint16(4+len(data)))
@@ -43,8 +59,7 @@ func (c *Conn) Signal(req Signal, rsp Signal) error {
 	var s sigCmd
 	select {
 	case s = <-c.sigSent:
-	case <-time.After(time.Second):
-		// TODO: Find the proper timed out defined in spec, if any.
+	case <-time.After(timeout):
 		return errors.New("signaling request timed out")
 	}
 
@@ -110,8 +125,8 @@ func (c *Conn) handleSignal(p pdu) error {
 			c.handleInformationRequest(s)
 		case SignalCreateChannelRequest:
 			c.handleCreateChannelRequest(s)
-		case SignalMoveChannelResponse:
-			c.handleMoveChannelResponse(s)
+		case SignalMoveChannelRequest:
+			c.handleMoveChannelRequest(s)
 		case SignalMoveChannelConfirmation:
 			c.handleMoveChannelConfirmation(s)
 		case SignalConnectionParameterUpdateRequest:
@@ -141,7 +156,36 @@ func (c *Conn) handleSignal(p pdu) error {
 	return nil
 }
 
-func (c *Conn) handle
+// handleConnectionRequest ...
+func (c *Conn) handleConnectionRequest(s sigCmd) {
+	// TODO:
+}
+
+// handleConfigurationRequest ...
+func (c *Conn) handleConfigurationRequest(s sigCmd) {
+	// TODO:
+}
+
+// handleEchoRequest ...
+func (c *Conn) handleEchoRequest(s sigCmd) {
+	// TODO:
+}
+
+// handleInformationRequest ...
+func (c *Conn) handleInformationRequest(s sigCmd) {
+	// TODO:
+}
+
+// handleCreateChannelRequest ...
+func (c *Conn) handleCreateChannelRequest(s sigCmd) {
+	// TODO:
+}
+
+// handleMoveChannelRequest ...
+func (c *Conn) handleMoveChannelRequest(s sigCmd) {
+	// TODO:
+}
+
 // DisconnectRequest implements Disconnect Request (0x06) [Vol 3, Part A, 4.6].
 func (c *Conn) handleDisconnectRequest(s sigCmd) {
 	var req DisconnectRequest

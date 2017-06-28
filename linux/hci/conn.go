@@ -27,6 +27,10 @@ type Conn struct {
 
 	param ConnectionCompleteEvent
 
+	// LMP Supported Features as reported by the Read Remote Supported Features
+	// Command [Vol 2, Part C, 3.3]
+	lmpFeatures uint64
+
 	// The channel identifier. This may be a fixed ID for some protocols (LE)
 	// but dynamic for others (BR/EDR) [Vol 3, Part A, 2.1]
 	chanID uint16
@@ -39,6 +43,9 @@ type Conn struct {
 	// For LE-U logical transport, the L2CAP implementations should support
 	// a minimum of 23 bytes, which are also the default values before the
 	// upper layer (ATT) optionally reconfigures them [Vol 3, Part A, 3.2.8].
+	//
+	// All L2CAP implementations shall support a minimum MTU of 48 octets over
+	// the ACL-U logical link and 23 octets over the LE-U logical link [Vol 3, Part A, 5.1]
 	rxMTU int
 	txMTU int
 	rxMPS int
@@ -63,8 +70,8 @@ type Conn struct {
 	// Identifier shall be used for each successive command. [Vol 3, Part A, 4]
 	sigID uint8
 
-	// sigCID The signaling channel for managing channels over ACL-U logical 
-	// links shall use CID 0x0001 and the signaling channel for managing channels 
+	// sigCID The signaling channel for managing channels over ACL-U logical
+	// links shall use CID 0x0001 and the signaling channel for managing channels
 	// over LE-U logical links shall use CID 0x0005 [Vol 3, Part A, 4]
 	sigCID uint16
 
@@ -82,18 +89,32 @@ type Conn struct {
 }
 
 func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
+	var (
+		sigCID uint16
+		defaultMTU int
+	)
+
+	if _, ok := c.param.(*LECreateConnection); ok {
+		sigCID = uint16(cidLESignal)
+		defaultMTU = ble.DefaultMTU,
+	} else {
+		sigCID = uint16(cidSignal)
+		defaultMTU = ble.DefaultACLMTU
+	}
+
 	c := &Conn{
 		hci:   h,
 		ctx:   context.Background(),
 		param: param,
 
-		rxMTU: ble.DefaultMTU,
-		txMTU: ble.DefaultMTU,
+		rxMTU: mtu,
+		txMTU: mtu,
 
-		rxMPS: ble.DefaultMTU,
+		rxMPS: mtu,
 
-		sigRxMTU: ble.MaxMTU,
-		sigTxMTU: ble.DefaultMTU,
+		sigCID: sigCID,
+		sigRxMTU: mtu,
+		sigTxMTU: mtu,
 
 		chInPkt: make(chan packet, 16),
 		chInPDU: make(chan pdu, 16),
@@ -102,12 +123,6 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 
 		chDone: make(chan struct{}),
 	}
-
-	if _, ok := c.param.(*LECreateConnection); ok {
-        c.sigCID = uint16(cidLESignal)
-    } else {
-        c.sigCID = uint16(cidSignal)
-    }
 
 	go func() {
 		for {
@@ -136,13 +151,13 @@ func (c *Conn) SetContext(ctx context.Context) {
 }
 
 // Read copies re-assembled L2CAP PDUs into sdu.
-func (c *Conn) ReadSDU(sdu []byte) (att bool, n int, err error) {
+func (c *Conn) Read(sdu []byte) (n int, err error) {
 	p, ok := <-c.chInPDU
 	if !ok {
-		return true, 0, errors.Wrap(io.ErrClosedPipe, "input channel closed")
+		return 0, errors.Wrap(io.ErrClosedPipe, "input channel closed")
 	}
 	if len(p) == 0 {
-		return true, 0, errors.Wrap(io.ErrUnexpectedEOF, "recieved empty packet")
+		return 0, errors.Wrap(io.ErrUnexpectedEOF, "recieved empty packet")
 	}
 
 	// Assume it's a B-Frame.
@@ -155,7 +170,7 @@ func (c *Conn) ReadSDU(sdu []byte) (att bool, n int, err error) {
 		data = leFrameHdr(p).payload()
 	}
 	if cap(sdu) < slen {
-		return true, 0, errors.Wrapf(io.ErrShortBuffer, "payload recieved exceeds sdu buffer")
+		return 0, errors.Wrapf(io.ErrShortBuffer, "payload recieved exceeds sdu buffer")
 	}
 	buf := bytes.NewBuffer(sdu)
 	buf.Reset()
@@ -164,7 +179,7 @@ func (c *Conn) ReadSDU(sdu []byte) (att bool, n int, err error) {
 		p := <-c.chInPDU
 		buf.Write(pdu(p).payload())
 	}
-	return cid == cidLEAtt, slen, nil
+	return slen, nil
 }
 
 // Write breaks down a L2CAP SDU into segmants [Vol 3, Part A, 7.3.1]
@@ -265,7 +280,7 @@ func (c *Conn) recombine() error {
 	if p.cid() == cidLEAtt && p.dlen() > c.rxMPS {
 		return fmt.Errorf("fragment size (%d) larger than rxMPS (%d)", p.dlen(), c.rxMPS)
 	}
-	// TODO check ACL-U packets length 
+	// TODO check ACL-U packets length
 	// not supporting Extended Flow Specification <= 48
 	// supporting the Extended Flow Specification <= 672
 	// [Vol 3, Part 4]

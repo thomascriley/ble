@@ -241,13 +241,6 @@ func (p *Client) ReadLongCharacteristic(c *ble.Characteristic) ([]byte, error) {
 	return buffer, nil
 }
 
-// Write writes to the device
-func (p *Client) Write(v []byte) error {
-	p.Lock()
-	defer p.Unlock()
-	return p.ac.WriteP2P(v)
-}
-
 // WriteCharacteristic writes a characteristic value to a server. [Vol 3, Part G, 4.9.3]
 func (p *Client) WriteCharacteristic(c *ble.Characteristic, v []byte, noRsp bool) error {
 	p.Lock()

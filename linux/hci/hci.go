@@ -105,9 +105,9 @@ type HCI struct {
 
 	// adMap keeps track of both LE and BR/EDR discovery events so that Dial can send
 	// the correct connection command and parameters
-	muDiscovery	   	*sync.Mutex
-	discoveryMap    map[string]interface{}
-	
+	muDiscovery  *sync.Mutex
+	discoveryMap map[string]interface{}
+
 	// Host to Controller Data Flow Control Packet-based Data flow control for LE-U [Vol 2, Part E, 4.1.1]
 	// Minimum 27 bytes. 4 bytes of L2CAP Header, and 23 bytes Payload from upper layer (ATT)
 	pool *Pool
@@ -153,6 +153,7 @@ func (h *HCI) Init() error {
 	h.evth[evt.ExtendedInquiryCode] = h.handleExtendedInquiry
 	h.evth[evt.ConnectionCompleteCode] = h.handleConnectionComplete
 	h.evth[evt.PageScanRetitionModeChangeCode] = h.handlePageScanRepetitionModeChange
+	h.evth[evt.ReadRemoteSupportedFeaturesComplete] = h.handleReadRemoteSupportedFeaturesComplete
 
 	skt, err := socket.NewSocket(h.id)
 	if err != nil {
@@ -571,7 +572,7 @@ func (h *HCI) handleInquiryResult(b []byte) error {
 
 	e := evt.InquiryResult(b)
 	for i := 0; i < int(e.NumResponses()); i++ {
-		inq := newInquiry(e,i)
+		inq := newInquiry(e, i)
 		h.discoveryMap[inq.Address().String()] = inq
 		go h.inqHandler(inq)
 	}
@@ -585,11 +586,11 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 	}
 
 	h.muDiscovery.Lock()
-    defer h.muDiscovery.Unlock()
+	defer h.muDiscovery.Unlock()
 
 	e := evt.InquiryResultwithRSSI(b)
 	for i := 0; i < int(e.NumResponses()); i++ {
-		inq := newInquiry(e,i)
+		inq := newInquiry(e, i)
 		h.discoveryMap[inq.Address().String()] = inq
 		go h.inqHandler(newInquiry(e, i))
 	}
@@ -606,13 +607,16 @@ func (h *HCI) handleConnectionComplete(b []byte) error {
 	h.muConns.Unlock()
 
 	if e.Status() == 0x00 {
-		// make a signaling connection request
-		req := &ConnectionRequest{
+
+		// make a signaling connection request [Vol 2, 4.9]
+
+		/*req := &ConnectionRequest{
 			PSM:,
 			SourceCID: c.chanID}
 		rsp := &ConnectionResponse{}
 		c.Signal(req,rsp)
-		h.chMasterConn <- c
+		h.chMasterConn <- c*/
+		h.se
 		return nil
 	}
 	if ErrCommand(e.Status()) == ErrConnID {
@@ -622,10 +626,19 @@ func (h *HCI) handleConnectionComplete(b []byte) error {
 	return nil
 }
 
+func (h *HCI) handleReadRemoteSupportedFeature(b []byte) {
+	e := evt.ReadRemoteSupportedFeaturesComplete(b)
+	if e.Status() == 0x00 {
+		h.muConns.Lock()
+		h.conns[e.ConnectionHandle()].lmpFeatures = e.LMPFeatures()
+		h.muConns.Unlock()
+	}
+	p.done <- []byte{e.Status()}
+}
 
 func (h *HCI) handlePageScanRepetitionModeChange(b []byte) error {
 	//e := evt.PageScanRepetitionModeChange(b)
-	
+
 	// remote controller has successfully changed the page
 	// scan repetition mode [ Vol 2, 3.7, Table 3.8 ]
 }
