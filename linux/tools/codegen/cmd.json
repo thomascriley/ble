@@ -93,7 +93,7 @@
                         "Spec": "Vol 2, Part E, 7.1.5",
                         "OGF": "0x01",
                         "OCF": "0x0005",
-                        "Len": 0,
+                        "Len": 13,
                         "Param": [
                                 {
                                         "BDADDR": "[6]byte"

@@ -192,7 +192,7 @@ func (d *Device) stopAdvertising() error {
 }
 
 // Scans for BR/EDR devices
-func (d *Device) Inquire(ctx context.Context, h ble.InqHandler) error {
+func (d *Device) Inquire(ctx context.Context, numResponses int, h ble.InqHandler) error {
 	return errors.New("Not implemented")
 }
 

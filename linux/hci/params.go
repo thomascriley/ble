@@ -24,6 +24,7 @@ type params struct {
 	inquiry         cmd.Inquiry
 	inquiryCancel   cmd.InquiryCancel
 	connBREDRParams cmd.CreateConnection
+	connCancelBREDR cmd.CreateConnectionCancel
 
 	readRemoteSupportedFeatures cmd.ReadRemoteSupportedFeatures
 	readRemoteExtendedFeatures  cmd.ReadRemoteExtendedFeatures
@@ -64,7 +65,7 @@ func (p *params) init() {
 	p.connBREDRParams = cmd.CreateConnection{
 		PacketType:             0xcc18, // 0xcc18; DM1,DH1,DH3,DM3,DH5,DM5 may be used
 		PageScanRepetitionMode: 0x01,   // 0x00: R0, 0x01: R1, 0x02: R2
-		ClockOffset:            0x8207, // 0-14 bits CLKslave - CLKmaster
+		ClockOffset:            0x0000, // 0-14 bits CLKslave - CLKmaster
 		AllowRoleSwitch:        0x01,   // 0x00: not allowed, 0x01: allowed
 	}
 }

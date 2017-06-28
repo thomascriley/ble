@@ -15,6 +15,77 @@
                         "Type": "Request"
                 },
                 {
+                        "Name": "Connection Request",
+                        "Spec": "Vol 3, Part A, 4.2",
+                        "Code": "0x02",
+                        "Fields": [
+                                {
+                                        "PSM": "uint16"
+                                },
+                                {
+                                        "Source CID": "uint16"
+                                }
+                        ],
+                        "Type": "Request"
+                },
+                {
+                        "Name": "Connection Response",
+                        "Spec": "Vol 3, Part A, 4.3",
+                        "Code": "0x03",
+                        "Fields": [
+                                {
+                                        "Destination CID": "uint16"
+                                },
+                                {
+                                        "Source CID": "uint16"
+                                },
+                                {
+                                        "Result": "uint16"
+                                },
+                                {
+                                        "Status": "uint16"
+                                }
+                        ],
+                        "Type": "Response"
+                },
+                {
+                        "Name": "Configuration Request",
+                        "Spec": "Vol 3, Part A, 4.4",
+                        "Code": "0x04",
+                        "Fields": [
+                                {
+                                        "Destination CID": "uint16"
+                                },
+                                {
+                                        "Flags": "uint16"
+                                },
+                                {
+                                        "Configuration Options": "[]byte"
+                                }
+                        ],
+                        "Type": "Request"
+                },
+                {
+                        "Name": "Configuration Response",
+                        "Spec": "Vol 3, Part A, 4.5",
+                        "Code": "0x05",
+                        "Fields": [
+                                {
+                                        "Source CID": "uint16"
+                                },
+                                {
+                                        "Flags CID": "uint16"
+                                },
+                                {
+                                        "Result": "uint16"
+                                },
+                                {
+                                        "Configuration Options": "[]byte"
+                                } 
+                        ],
+                        "Type": "Response"
+                },
+                {
                         "Name": "Disconnect Request",
                         "Spec": "Vol 3, Part A, 4.6",
                         "Code": "0x06",
@@ -38,6 +109,146 @@
                                 },
                                 {
                                         "Source CID": "uint16"
+                                }
+                        ],
+                        "Type": "Response"
+                },
+                {
+                        "Name": "Echo Request",
+                        "Spec": "Vol 3, Part A, 4.8",
+                        "Code": "0x08",
+                        "Fields": [
+                                {
+                                        "Data": "uint16"
+                                } 
+                        ],
+                        "Type": "Requst"
+                },
+                {
+                        "Name": "Echo Response",
+                        "Spec": "Vol 3, Part A, 4.9",
+                        "Code": "0x09",
+                        "Fields": [
+                                {
+                                        "Data": "[]byte"
+                                }
+                        ],
+                        "Type": "Response"
+                },
+                {
+                        "Name": "Information Request",
+                        "Spec": "Vol 3, Part A, 4.10",
+                        "Code": "0x0A",
+                        "Fields": [
+                                {
+                                        "Info Type": "uint16"
+                                }
+                        ],
+                        "Type": "Request"
+                },
+                {
+                        "Name": "Information Response",
+                        "Spec": "Vol 3, Part A, 4.11",
+                        "Code": "0x0B",
+                        "Fields": [
+                                {
+                                        "Info Type": "uint16"
+                                },
+                                {
+                                        "Result": "uint16"
+                                },
+                                {
+                                        "Data": "[]byte"
+                                }
+                        ],
+                        "Type": "Response"
+                },
+                {
+                        "Name": "Create Channel Request",
+                        "Spec": "Vol 3, Part A, 4.14",
+                        "Code": "0x0C",
+                        "Fields": [
+                                {
+                                        "PSM": "uint16"
+                                },
+                                {
+                                        "Source CID": "uint16"
+                                },
+                                {
+                                        "Controller ID": "uint8"
+                                }
+                        ],
+                        "Type": "Request"
+                },
+                {
+                        "Name": "Create Channel Response",
+                        "Spec": "Vol 3, Part A, 4.15",
+                        "Code": "0x0D",
+                        "Fields": [
+                                {
+                                        "Destination CID": "uint16"
+                                },
+                                {
+                                        "Source CID": "uint16"
+                                },
+                                {
+                                        "Result": "uint16"
+                                },
+                                {
+                                        "Status": "uint16"
+                                }
+                        ],
+                        "Type": "Response"
+                },
+                {
+                        "Name": "Move Channel Request",
+                        "Spec": "Vol 3, Part A, 4.16",
+                        "Code": "0x0E",
+                        "Fields": [
+                                {
+                                        "Initiator CID": "uint16"
+                                },
+                                {
+                                        "Dest Controller ID": "uint8"
+                                }
+                        ],
+                        "Type": "Request"
+                },
+                {
+                        "Name": "Move Channel Response",
+                        "Spec": "Vol 3, Part A, 4.17",
+                        "Code": "0x0F",
+                        "Fields": [
+                                {
+                                        "Initiator CID": "uint16"
+                                },
+                                {
+                                        "Result": "uint16"
+                                }
+                        ],
+                        "Type": "Response"
+                },
+                {
+                        "Name": "Move Channel Confirmation",
+                        "Spec": "Vol 3, Part A, 4.18",
+                        "Code": "0x10",
+                        "Fields": [
+                                {
+                                        "Initiator CID": "uint16"
+                                },
+                                {
+                                        "Result": "uint16"
+                                }
+                        ],
+                        "Type": "Request"
+                },
+                {
+                        "Name": "Move Channel Confirmation Response",
+                        "Spec": "Vol 3, Part A, 4.19",
+                        "Code": "0x11",
+                        "Fields": [
+                                {
+                                        "Initiator CID": "uint16"
                                 }
                         ],
                         "Type": "Response"

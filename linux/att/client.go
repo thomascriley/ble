@@ -373,7 +373,7 @@ func (c *Client) Write(handle uint16, value []byte) error {
 	return nil
 }
 
-// WriteCommandP2P requests the server to the write to the connection using P2P
+// WriteEDR requests the server to write to the connection using EDR
 func (c *Client) WriteP2P(v []byte) error {
 	if len(v) > c.l2c.TxMTU() {
 		return ErrInvalidArgument
@@ -382,7 +382,9 @@ func (c *Client) WriteP2P(v []byte) error {
 	txBuf := <-c.chTxBuf
 	defer func() { c.chTxBuf <- txBuf }()
 
-	copy(txBuf, v)
+	copy(txBuf, len(v) + 4)
+	copy(txBuf[2:], dcid)
+	copy(txBuf[4:], )
 
 	return c.sendCmd(txBuf)
 }

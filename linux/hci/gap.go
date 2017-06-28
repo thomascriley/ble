@@ -154,13 +154,32 @@ func (h *HCI) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	if err != nil {
 		return nil, ErrInvalidAddr
 	}
-	h.params.connParams.PeerAddress = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
-	if _, ok := a.(RandomAddress); ok {
-		h.params.connParams.PeerAddressType = 1
+
+	h.muDiscovery.Lock()
+	ad := h.discoveryMap[a.String()]
+	h.muDiscovery.Unlock()
+
+	var c Command
+	h.params.Lock()
+	if inq, ok := ad.(*Inquiry); ok {
+		h.params.connBREDRParams.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
+        h.params.connBREDRParams.ClockOffset = uint16(inq.ClockOffset())
+		h.params.connBREDRParams.PageScanRepetitionMode = uint8(inq.PageScanRepetitionMode())
+		c = &h.params.connBREDRParams
+	} else {
+		h.params.connParams.PeerAddress = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
+		if _, ok := a.(RandomAddress); ok {
+			h.params.connParams.PeerAddressType = 1
+		}
+		c = &h.params.connParams
 	}
-	if err = h.Send(&h.params.connParams, nil); err != nil {
+	err = h.Send(c, nil)
+	h.params.Unlock()
+	
+	if err != nil {
 		return nil, err
 	}
+
 	var tmo <-chan time.Time
 	if h.dialerTmo != time.Duration(0) {
 		tmo = time.After(h.dialerTmo)
@@ -173,7 +192,16 @@ func (h *HCI) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	case c := <-h.chMasterConn:
 		return gatt.NewClient(c)
 	case <-tmo:
-		err := h.Send(&h.params.connCancel, nil)
+		h.params.Lock()
+		if _, ok := ad.(*Inquiry); ok {
+			h.params.connCancelBREDR.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
+			c = &h.params.connCancelBREDR
+		} else {
+			c = &h.params.connCancel
+		} 
+		err = h.Send(c, nil)
+		h.params.Unlock()
+
 		if err == nil {
 			// The pending connection was canceled successfully.
 			return nil, fmt.Errorf("connection timed out")

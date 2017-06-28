@@ -21,7 +21,7 @@ func (h *HCI) Inquire(length int, numResponses int) error {
 
 	// General/Unlimited Inquiry Access Code (GIAC)
 	// see: https://www.bluetooth.com/specifications/assigned-numbers/baseband
-	h.params.inquiry.LAP = [3]byte{0x9e, 0x8b, 0x33}
+	h.params.inquiry.LAP = [3]byte{0x33, 0x8b, 0x9e}
 	h.params.inquiry.InquiryLength = uint8(length)
 	h.params.inquiry.NumResponses = uint8(numResponses)
 	return h.Send(&h.params.inquiry, nil)

@@ -29,8 +29,7 @@ func (c *Conn) Signal(req Signal, rsp Signal) error {
 	data := req.Marshal()
 	buf := bytes.NewBuffer(make([]byte, 0))
 	binary.Write(buf, binary.LittleEndian, uint16(4+len(data)))
-	binary.Write(buf, binary.LittleEndian, uint16(cidLESignal))
-
+	binary.Write(buf, binary.LittleEndian, uint16(c.sigCID))
 	binary.Write(buf, binary.LittleEndian, uint8(req.Code()))
 	binary.Write(buf, binary.LittleEndian, uint8(c.sigID))
 	binary.Write(buf, binary.LittleEndian, uint16(len(data)))
@@ -66,7 +65,7 @@ func (c *Conn) sendResponse(code uint8, id uint8, r Signal) (int, error) {
 	data := r.Marshal()
 	buf := bytes.NewBuffer(make([]byte, 0))
 	binary.Write(buf, binary.LittleEndian, uint16(4+len(data)))
-	binary.Write(buf, binary.LittleEndian, uint16(cidLESignal))
+	binary.Write(buf, binary.LittleEndian, uint16(c.sigCID))
 	binary.Write(buf, binary.LittleEndian, uint8(code))
 	binary.Write(buf, binary.LittleEndian, uint8(id))
 	binary.Write(buf, binary.LittleEndian, uint16(len(data)))
@@ -99,8 +98,22 @@ func (c *Conn) handleSignal(p pdu) error {
 	for len(s) > 0 {
 		// Check if it's a supported request.
 		switch s.code() {
+		case SignalConnectionRequest:
+			c.handleConnectionRequest(s)
+		case SignalConfigurationRequest:
+			c.handleConfigurationRequest(s)
 		case SignalDisconnectRequest:
 			c.handleDisconnectRequest(s)
+		case SignalEchoRequest:
+			c.handleEchoRequest(s)
+		case SignalInformationRequest:
+			c.handleInformationRequest(s)
+		case SignalCreateChannelRequest:
+			c.handleCreateChannelRequest(s)
+		case SignalMoveChannelResponse:
+			c.handleMoveChannelResponse(s)
+		case SignalMoveChannelConfirmation:
+			c.handleMoveChannelConfirmation(s)
 		case SignalConnectionParameterUpdateRequest:
 			c.handleConnectionParameterUpdateRequest(s)
 		case SignalLECreditBasedConnectionRequest:
@@ -128,6 +141,7 @@ func (c *Conn) handleSignal(p pdu) error {
 	return nil
 }
 
+func (c *Conn) handle
 // DisconnectRequest implements Disconnect Request (0x06) [Vol 3, Part A, 4.6].
 func (c *Conn) handleDisconnectRequest(s sigCmd) {
 	var req DisconnectRequest

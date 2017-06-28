@@ -34,14 +34,14 @@ func main() {
 	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), *du))
 
 	if *bredr {
-		chkErr(ble.Inquire(ctx, inqHandler))
+		chkErr(ble.Inquire(ctx, 255, inqHandler))
 	} else {
 		chkErr(ble.Scan(ctx, *dup, advHandler, nil))
 	}
 }
 
 func inqHandler(i ble.Inquiry) {
-	fmt.Printf("[%s] %3d", i.Address(), i.RSSI())
+	fmt.Printf("[%s] %3d\n", i.Address(), i.RSSI())
 }
 
 func advHandler(a ble.Advertisement) {

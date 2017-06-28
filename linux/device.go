@@ -1,7 +1,7 @@
 package linux
 
 import (
-	"log"
+	"log" 
 	"time"
 
 	"github.com/pkg/errors"
@@ -158,7 +158,7 @@ func (d *Device) Inquire(ctx context.Context, numResponses int, h ble.InqHandler
 	if !ok {
 		return errors.New("BR/EDR scanning requires a deadline be set")
 	}
-	length := deadline.Sub(time.Now()).Seconds() / 128
+	length := int(deadline.Sub(time.Now()).Seconds() / 1.28)
 	if err := d.HCI.SetInqHandler(h); err != nil {
 		return err
 	}
@@ -175,14 +175,6 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	// d.HCI.Dial is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
 	cln, err := d.HCI.Dial(ctx, a)
-	return cln, errors.Wrap(err, "can't dial")
-}
-
-// DialBREDR dials a connection with a BR/EDR device
-func (d *Device) DialBREDR(ctx context.Context, a ble.Addr) (ble.Client, error) {
-	// d.HCI.DialBREDR is a blocking call, although most of time it should return immediately.
-	// But in case passing wrong device address or the device went non-connectable, it blocks.
-	cln, err := d.HCI.DialBREDR(ctx, a)
 	return cln, errors.Wrap(err, "can't dial")
 }
 

@@ -38,7 +38,7 @@ type Device interface {
 	Scan(ctx context.Context, allowDup bool, h AdvHandler) error
 
 	// Inquire starts a BR/EDR scan
-	Inquire(ctx context.Context, h InqHandler) error
+	Inquire(ctx context.Context, numResponses int, h InqHandler) error
 
 	// Dial ...
 	Dial(ctx context.Context, a Addr) (Client, error)

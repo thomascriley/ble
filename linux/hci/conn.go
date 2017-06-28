@@ -27,6 +27,10 @@ type Conn struct {
 
 	param ConnectionCompleteEvent
 
+	// The channel identifier. This may be a fixed ID for some protocols (LE)
+	// but dynamic for others (BR/EDR) [Vol 3, Part A, 2.1]
+	chanID uint16
+
 	// While MTU is the maximum size of payload data that the upper layer (ATT)
 	// can accept, the MPS is the maximum PDU payload size this L2CAP implementation
 	// supports. When segmantation is not used, the MPS should be made to the same
@@ -58,6 +62,11 @@ type Conn struct {
 	// same value in its response. Within each signalling channel a different
 	// Identifier shall be used for each successive command. [Vol 3, Part A, 4]
 	sigID uint8
+
+	// sigCID The signaling channel for managing channels over ACL-U logical 
+	// links shall use CID 0x0001 and the signaling channel for managing channels 
+	// over LE-U logical links shall use CID 0x0005 [Vol 3, Part A, 4]
+	sigCID uint16
 
 	sigSent chan []byte
 	smpSent chan []byte
@@ -93,6 +102,12 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 
 		chDone: make(chan struct{}),
 	}
+
+	if _, ok := c.param.(*LECreateConnection); ok {
+        c.sigCID = uint16(cidLESignal)
+    } else {
+        c.sigCID = uint16(cidSignal)
+    }
 
 	go func() {
 		for {
@@ -164,7 +179,7 @@ func (c *Conn) Write(sdu []byte) (int, error) {
 	}
 	b := make([]byte, 4+plen)
 	binary.LittleEndian.PutUint16(b[0:2], uint16(len(sdu)))
-	binary.LittleEndian.PutUint16(b[2:4], cidLEAtt)
+	binary.LittleEndian.PutUint16(b[2:4], c.chanID)
 	if c.leFrame {
 		binary.LittleEndian.PutUint16(b[4:6], uint16(len(sdu)))
 		copy(b[6:], sdu)
@@ -250,6 +265,10 @@ func (c *Conn) recombine() error {
 	if p.cid() == cidLEAtt && p.dlen() > c.rxMPS {
 		return fmt.Errorf("fragment size (%d) larger than rxMPS (%d)", p.dlen(), c.rxMPS)
 	}
+	// TODO check ACL-U packets length 
+	// not supporting Extended Flow Specification <= 48
+	// supporting the Extended Flow Specification <= 672
+	// [Vol 3, Part 4]
 
 	// If this pkt is not a complete PDU, and we'll be receiving more
 	// fragments, re-allocate the whole PDU (including Header).
@@ -264,9 +283,10 @@ func (c *Conn) recombine() error {
 		p = append(p, pdu(pkt.data())...)
 	}
 
-	// TODO: support dynamic or assigned channels for LE-Frames.
 	cid := p.cid()
 	switch {
+	case cid == cidSignal:
+		c.handleSignal(p)
 	case cid == cidLEAtt:
 		c.chInPDU <- p
 	case cid == cidLESignal:

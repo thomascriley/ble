@@ -132,7 +132,7 @@ func (c *CreateConnection) String() string {
 func (c *CreateConnection) OpCode() int { return 0x01<<10 | 0x0005 }
 
 // Len returns the length of the command.
-func (c *CreateConnection) Len() int { return 0 }
+func (c *CreateConnection) Len() int { return 13 }
 
 // Marshal serializes the command parameters into binary form.
 func (c *CreateConnection) Marshal(b []byte) error {

@@ -45,6 +45,9 @@ func NewHCI(opts ...Option) (*HCI, error) {
 		evth: map[int]handlerFn{},
 		subh: map[int]handlerFn{},
 
+		muDiscovery:  &sync.Mutex{},
+		discoveryMap: make(map[string]interface{}),
+
 		muConns:      &sync.Mutex{},
 		conns:        make(map[uint16]*Conn),
 		chMasterConn: make(chan *Conn),
@@ -100,6 +103,11 @@ type HCI struct {
 	// Inquiry scan handler
 	inqHandler ble.InqHandler
 
+	// adMap keeps track of both LE and BR/EDR discovery events so that Dial can send
+	// the correct connection command and parameters
+	muDiscovery	   	*sync.Mutex
+	discoveryMap    map[string]interface{}
+	
 	// Host to Controller Data Flow Control Packet-based Data flow control for LE-U [Vol 2, Part E, 4.1.1]
 	// Minimum 27 bytes. 4 bytes of L2CAP Header, and 23 bytes Payload from upper layer (ATT)
 	pool *Pool
@@ -139,11 +147,12 @@ func (h *HCI) Init() error {
 	// evt.LERemoteConnectionParameterRequestSubCode: todo),
 
 	// BD/EDR
-	h.subh[evt.InquiryCompleteCode] = h.handleInquiryComplete
-	h.subh[evt.InquiryResultCode] = h.handleInquiryResult
-	h.subh[evt.InquiryResultwithRSSICode] = h.handleInquiryWithRSSI
-	h.subh[evt.ExtendedInquiryCode] = h.handleExtendedInquiry
-	h.subh[evt.ConnectionCompleteCode] = h.handleConnectionComplete
+	h.evth[evt.InquiryCompleteCode] = h.handleInquiryComplete
+	h.evth[evt.InquiryResultCode] = h.handleInquiryResult
+	h.evth[evt.InquiryResultwithRSSICode] = h.handleInquiryWithRSSI
+	h.evth[evt.ExtendedInquiryCode] = h.handleExtendedInquiry
+	h.evth[evt.ConnectionCompleteCode] = h.handleConnectionComplete
+	h.evth[evt.PageScanRetitionModeChangeCode] = h.handlePageScanRepetitionModeChange
 
 	skt, err := socket.NewSocket(h.id)
 	if err != nil {
@@ -391,6 +400,12 @@ func (h *HCI) handleLEAdvertisingReport(b []byte) error {
 		default:
 			a = newAdvertisement(e, i)
 		}
+
+		// create a lookup to know that are dialing a LE device
+		h.muDiscovery.Lock()
+		h.discoveryMap[a.Address().String()] = a
+		h.muDiscovery.Unlock()
+
 		go h.advHandler(a)
 	}
 
@@ -433,6 +448,7 @@ func (h *HCI) handleCommandStatus(b []byte) error {
 func (h *HCI) handleLEConnectionComplete(b []byte) error {
 	e := evt.LEConnectionComplete(b)
 	c := newConn(h, e)
+	c.chanID = cidLEAtt
 	h.muConns.Lock()
 	h.conns[e.ConnectionHandle()] = c
 	h.muConns.Unlock()
@@ -536,7 +552,11 @@ func (h *HCI) handleExtendedInquiry(b []byte) error {
 	}
 
 	// always a single response [Vol2, 7.7.38]
-	go h.inqHandler(newInquiry(evt.ExtendedInquiry(b), 0))
+	inq := newInquiry(evt.ExtendedInquiry(b), 0)
+	h.muDiscovery.Lock()
+	h.discoveryMap[inq.Address().String()] = inq
+	h.muDiscovery.Unlock()
+	go h.inqHandler(inq)
 
 	return nil
 }
@@ -546,9 +566,14 @@ func (h *HCI) handleInquiryResult(b []byte) error {
 		return nil
 	}
 
+	h.muDiscovery.Lock()
+	defer h.muDiscovery.Unlock()
+
 	e := evt.InquiryResult(b)
 	for i := 0; i < int(e.NumResponses()); i++ {
-		go h.inqHandler(newInquiry(e, i))
+		inq := newInquiry(e,i)
+		h.discoveryMap[inq.Address().String()] = inq
+		go h.inqHandler(inq)
 	}
 
 	return nil
@@ -559,8 +584,13 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 		return nil
 	}
 
+	h.muDiscovery.Lock()
+    defer h.muDiscovery.Unlock()
+
 	e := evt.InquiryResultwithRSSI(b)
 	for i := 0; i < int(e.NumResponses()); i++ {
+		inq := newInquiry(e,i)
+		h.discoveryMap[inq.Address().String()] = inq
 		go h.inqHandler(newInquiry(e, i))
 	}
 
@@ -570,11 +600,18 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 func (h *HCI) handleConnectionComplete(b []byte) error {
 	e := evt.ConnectionComplete(b)
 	c := newConn(h, e)
+
 	h.muConns.Lock()
 	h.conns[e.ConnectionHandle()] = c
 	h.muConns.Unlock()
 
 	if e.Status() == 0x00 {
+		// make a signaling connection request
+		req := &ConnectionRequest{
+			PSM:,
+			SourceCID: c.chanID}
+		rsp := &ConnectionResponse{}
+		c.Signal(req,rsp)
 		h.chMasterConn <- c
 		return nil
 	}
@@ -583,4 +620,12 @@ func (h *HCI) handleConnectionComplete(b []byte) error {
 		return nil
 	}
 	return nil
+}
+
+
+func (h *HCI) handlePageScanRepetitionModeChange(b []byte) error {
+	//e := evt.PageScanRepetitionModeChange(b)
+	
+	// remote controller has successfully changed the page
+	// scan repetition mode [ Vol 2, 3.7, Table 3.8 ]
 }
