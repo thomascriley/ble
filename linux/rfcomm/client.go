@@ -1,12 +1,17 @@
 package rfcomm
 
 import (
-	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/currantlabs/ble"
 	"github.com/pkg/errors"
+)
+
+var (
+	// ErrInvalidArgument means one or more of the arguments are invalid.
+	ErrInvalidArgument = errors.New("invalid argument")
 )
 
 // TODO: Added the following LMP Methods
@@ -72,28 +77,39 @@ func (c *Client) Read(b []byte) (int, error) {
 		if len(p) > len(b) {
 			return 0, errors.Wrapf(io.ErrShortBuffer, "payload recieved exceeds sdu buffer")
 		}
-		copy(b[:], p)
-		return len(p), nil
+		// TODO: check for matching server number
+		// TODO: check ea, cr and dlci values
+		if address := p[0]; address != 0x09 {
+			return 0, errors.New("Invalid address byte")
+		}
+		controlField := p[1]
+		if int(controlField&uint8(ControlNumberUIH)) != ControlNumberUIH {
+			return 0, errors.New("Invalid control number")
+		}
+		// TODO: check that the length byte matches actual payload length
+		// check for credit
+		if controlField&0x10 == 0x10 {
+			// TODO: handle credits
+			copy(b[:], p[4:len(p)-1])
+			return len(p) - 5, nil
+		}
+		copy(b[:], p[3:len(p)-1])
+		return len(p) - 4, nil
 	case err := <-c.chErr:
 		return 0, err
 	}
 }
 
-// Write ...
+// Write RFCOMM Bluetooth specification Version 1.0 B
 func (c *Client) Write(v []byte) (int, error) {
-	if len(v) > c.l2c.TxMTU() {
-		return 0, ErrInvalidArgument
-	}
-
-	txBuf := <-c.chTxBuf
-	defer func() { c.chTxBuf <- txBuf }()
-
-	copy(txBuf, len(v)+4)
-	copy(txBuf[2:], c.l2c.DestinationID)
-	copy(txBuf[4:], c.l2c.SourceID)
-
-	_, err := c.l2c.Write(b)
-	return len(v), err
+	return len(v), c.sendFrame(frame{
+		ControlNumber:      ControlNumberUIH,
+		CommmandResponse:   true,
+		DLCI:               false,
+		ServerNum:          1,
+		PollFinal:          false,
+		Payload:            v,
+		FrameCheckSequence: 0x9a})
 }
 
 // CancelConnection disconnects the connection.
@@ -110,12 +126,70 @@ func (c *Client) Disconnected() <-chan struct{} {
 	return c.l2c.Disconnected()
 }
 
+func (c *Client) sendSABMFrame() error {
+
+	err := c.sendFrame(frame{
+		ControlNumber:      ControlNumberSABM,
+		CommmandResponse:   true,
+		DLCI:               false,
+		ServerNum:          0,
+		PollFinal:          true,
+		Payload:            []byte{},
+		FrameCheckSequence: 0x1c})
+	if err != nil {
+		return err
+	}
+
+	select {
+	case p, ok := <-c.p2p:
+		if !ok {
+			return errors.New("Channel closed")
+		}
+		var frm frame
+		if err = frm.Unmarshal(p); err != nil {
+			return err
+		}
+		switch int(frm.ControlNumber) {
+		case ControlNumberDISC:
+			return errors.New("Receveived disconnect")
+		case ControlNumberDM:
+			return errors.New("Received disconnect mode")
+		case ControlNumberUIH:
+			fallthrough
+		case ControlNumberSABM:
+			return errors.New("Received unexepcted control number")
+		case ControlNumberUA:
+			return nil
+		}
+	case <-time.After(60 * time.Second):
+		// TODO: must send a ControlNumberDISC to the SABM channel
+		return errors.New("Timed out")
+	}
+	return nil
+}
+
+func (c *Client) sendFrame(frm frame) error {
+	txBuf := <-c.chTxBuf
+	defer func() { c.chTxBuf <- txBuf }()
+
+	n, err := frm.Marshal(txBuf)
+	if err != nil {
+		return err
+	}
+
+	if n > c.l2c.TxMTU() {
+		return ErrInvalidArgument
+	}
+
+	_, err = c.l2c.Write(txBuf[:n])
+	return err
+}
+
 // Loop ...
 func (c *Client) loop() {
 
 	for {
 		n, err := c.l2c.Read(c.rxBuf)
-		logger.Debug("client", "rsp", fmt.Sprintf("% X", c.rxBuf[:n]))
 		if err != nil {
 			// We don't expect any error from the bearer (L2CAP ACL-U)
 			// Pass it along to the pending read, if any, and escape.

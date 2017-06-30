@@ -11,6 +11,7 @@ import (
 
 	"github.com/currantlabs/ble"
 	"github.com/currantlabs/ble/linux/hci/cmd"
+	"github.com/currantlabs/ble/linux/hci/evt"
 	"github.com/pkg/errors"
 )
 
@@ -101,7 +102,7 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 		defaultMTU int
 	)
 
-	if _, ok := c.param.(*LECreateConnection); ok {
+	if _, ok := param.(*evt.LEConnectionComplete); ok {
 		sigCID = uint16(cidLESignal)
 		defaultMTU = ble.DefaultMTU
 	} else {
@@ -114,14 +115,14 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 		ctx:   context.Background(),
 		param: param,
 
-		rxMTU: mtu,
-		txMTU: mtu,
+		rxMTU: defaultMTU,
+		txMTU: defaultMTU,
 
-		rxMPS: mtu,
+		rxMPS: defaultMTU,
 
 		sigCID:   sigCID,
-		sigRxMTU: mtu,
-		sigTxMTU: mtu,
+		sigRxMTU: defaultMTU,
+		sigTxMTU: defaultMTU,
 
 		chInPkt: make(chan packet, 16),
 		chInPDU: make(chan pdu, 16),

@@ -399,7 +399,7 @@ func (c *Conn) ConnectionRequest(psm uint16, timeout time.Duration) error {
 }
 
 // ConfigurationRequest [Vol 3, Part A, 4.4]
-func (c *Conn) ConfigurationRequest(options []Option, timeout time.Duration) error {
+func (c *Conn) ConfigurationRequest(options []l2cap.Option, timeout time.Duration) error {
 
 	respOptions := make([]byte, 0)
 	i := 0

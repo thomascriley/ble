@@ -75,27 +75,40 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 			h.dynamicCID++
 		}
 
-		cli := rfcomm.NewClient(c)
-		if err = c.InformationRequest(l2cap.InfoTypeConnectionlessMTU); err != nil {
-			return err
-		}
-		if err = c.InformationRequest(l2cap.InfoTypeExtendedFeatures); err != nil {
-			return err
-		}
-		// 1.2 - 2.1 + EDR return not supported
-		c.InformationRequest(l2cap.InfoTypeFixedChannels)
+		timeout := time.Duration(15 * time.Second)
 
-		if err = c.ConnectionRequest(0x0003); err != nil {
-			return err
+		cli := rfcomm.NewClient(c)
+		if err = c.InformationRequest(l2cap.InfoTypeConnectionlessMTU, timeout); err != nil {
+			return nil, err
+		}
+		if err = c.InformationRequest(l2cap.InfoTypeExtendedFeatures, timeout); err != nil {
+			return nil, err
+		}
+		// 1.2 - 2.1 + EDR will return not supported
+		c.InformationRequest(l2cap.InfoTypeFixedChannels, timeout)
+
+		if err = c.ConnectionRequest(psmRFCOMM, timeout); err != nil {
+			return nil, err
 		}
 
 		// Even if all default values are acceptable, a Configuration Request
 		// packet with no options shall be sent. [Vol 3, Part A, 4.4]
+		// TODO: make this non-static
 		options := []l2cap.Option{&l2cap.MTUOption{MTU: 0x03f5}}
-		if err = c.ConfigurationRequest(options); err != nil {
-			return err
+		if err = c.ConfigurationRequest(options, timeout); err != nil {
+			return nil, err
 		}
 
+		// l2cap has been setup, now we need to setup the RFCOMM connection.
+		// command timeouts are 60s, if times out then send a DISC frame
+		// on the original SAMB channel
+
+		// first send a SABM frame and expect an UA frame. If rejected
+		// device with send a DM frame
+		if err = cli.SendSABM(); err != nil {
+			return nil, err
+		}
+		return cli, nil
 	case <-tmo:
 		h.params.Lock()
 		h.params.connCancelBREDR.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
@@ -109,7 +122,7 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		// The connection has been established, the cancel command
 		// failed with ErrDisallowed.
 		if err == ErrDisallowed {
-			return spp.NewClient(<-h.chMasterSPPConn)
+			return rfcomm.NewClient(<-h.chMasterSPPConn), nil
 		}
 		return nil, errors.Wrap(err, "cancel connection failed")
 	}

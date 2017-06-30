@@ -178,7 +178,7 @@ func (h *HCI) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 		return nil, h.err
 	case c := <-h.chMasterConn:
 		c.SourceID = cidLEAtt
-		c.DestinationID = cidLEATT
+		c.DestinationID = cidLEAtt
 		return gatt.NewClient(c)
 	case <-tmo:
 		h.params.Lock()

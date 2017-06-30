@@ -443,7 +443,6 @@ func (h *HCI) handleCommandStatus(b []byte) error {
 func (h *HCI) handleLEConnectionComplete(b []byte) error {
 	e := evt.LEConnectionComplete(b)
 	c := newConn(h, e)
-	c.chanID = cidLEAtt
 	h.muConns.Lock()
 	h.conns[e.ConnectionHandle()] = c
 	h.muConns.Unlock()
@@ -600,14 +599,19 @@ func (h *HCI) handleConnectionComplete(b []byte) error {
 	return nil
 }
 
-func (h *HCI) handleReadRemoteSupportedFeature(b []byte) {
+func (h *HCI) handleReadRemoteSupportedFeature(b []byte) error {
 	e := evt.ReadRemoteSupportedFeaturesComplete(b)
 	if e.Status() == 0x00 {
 		h.muConns.Lock()
 		h.conns[e.ConnectionHandle()].lmpFeatures = e.LMPFeatures()
 		h.muConns.Unlock()
 	}
-	h.done <- []byte{e.Status()}
+	p, found := h.sent[int(evt.ReadRemoteSupportedFeaturesCompleteCode)]
+	if !found {
+		return fmt.Errorf("can't find the cmd for CommandReadRemoteSupportedFeatureEP: % X", e)
+	}
+	p.done <- []byte{e.Status()}
+	return nil
 }
 
 func (h *HCI) handlePageScanRepetitionModeChange(b []byte) error {
