@@ -31,9 +31,10 @@ type Conn struct {
 	// Command [Vol 2, Part C, 3.3]
 	lmpFeatures uint64
 
-	// The channel identifier. This may be a fixed ID for some protocols (LE)
+	// The channel identifiers. This may be a fixed ID for some protocols (LE)
 	// but dynamic for others (BR/EDR) [Vol 3, Part A, 2.1]
-	chanID uint16
+	SourceID      uint16
+	DestinationID uint16
 
 	// While MTU is the maximum size of payload data that the upper layer (ATT)
 	// can accept, the MPS is the maximum PDU payload size this L2CAP implementation
@@ -85,18 +86,24 @@ type Conn struct {
 	// chSentBufs tracks the HCI buffer occupied by this connection.
 	txBuffer *Client
 
+	// extendedFeatures BR/EDR/LE supported extended features as determined by a signaling request
+	extendedFeatures uint32
+
+	// fixedChannels BR/EDR/LE supported fixed channels as determined by a signaling request
+	fixedChannels uint64
+
 	chDone chan struct{}
 }
 
 func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 	var (
-		sigCID uint16
+		sigCID     uint16
 		defaultMTU int
 	)
 
 	if _, ok := c.param.(*LECreateConnection); ok {
 		sigCID = uint16(cidLESignal)
-		defaultMTU = ble.DefaultMTU,
+		defaultMTU = ble.DefaultMTU
 	} else {
 		sigCID = uint16(cidSignal)
 		defaultMTU = ble.DefaultACLMTU
@@ -112,7 +119,7 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 
 		rxMPS: mtu,
 
-		sigCID: sigCID,
+		sigCID:   sigCID,
 		sigRxMTU: mtu,
 		sigTxMTU: mtu,
 
@@ -194,7 +201,7 @@ func (c *Conn) Write(sdu []byte) (int, error) {
 	}
 	b := make([]byte, 4+plen)
 	binary.LittleEndian.PutUint16(b[0:2], uint16(len(sdu)))
-	binary.LittleEndian.PutUint16(b[2:4], c.chanID)
+	binary.LittleEndian.PutUint16(b[2:4], c.SourceID)
 	if c.leFrame {
 		binary.LittleEndian.PutUint16(b[4:6], uint16(len(sdu)))
 		copy(b[6:], sdu)

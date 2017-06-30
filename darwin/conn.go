@@ -2,6 +2,7 @@ package darwin
 
 import (
 	"sync"
+	"time"
 
 	"golang.org/x/net/context"
 
@@ -88,6 +89,10 @@ func (c *conn) Write(b []byte) (int, error) {
 }
 
 func (c *conn) Close() error {
+	return nil
+}
+
+func (c *conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 	return nil
 }
 

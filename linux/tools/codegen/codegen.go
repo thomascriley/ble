@@ -350,7 +350,7 @@ func main() {
 		}
 		genEvt(b, w, t)
 	case "signal":
-		fmt.Fprintf(w, "package hci\n")
+		fmt.Fprintf(w, "package l2cap\n")
 		t, err := template.New(*tmpl).Funcs(funcMap).Parse(string(input("signal.tmpl")))
 		if err != nil {
 			log.Fatalf("parsing: %s", err)

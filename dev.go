@@ -42,4 +42,7 @@ type Device interface {
 
 	// Dial ...
 	Dial(ctx context.Context, a Addr) (Client, error)
+
+	// Dial
+	DialRFCOMM(ctx context.Context, a Addr) (RFCOMMClient, error)
 }

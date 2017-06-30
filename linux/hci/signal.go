@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/currantlabs/ble/linux/hci/cmd"
+	"github.com/currantlabs/ble/linux/l2cap"
 )
 
 // Signal ...
@@ -36,10 +37,10 @@ func (c *Conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 	// of channel termination (if no response is received) is 60 seconds.
 	// [Vol 3, Part A, 6.2.1 ]
 	if timeout > 60*time.Second {
-		return errors.New("The signal timeout can not be more than 60 seconds")
+		timeout = time.Duration(60 * time.Second)
 	}
 	if timeout < 1*time.Second {
-		return errors.New("The signal timeout can not be less than a second")
+		timeout = time.Duration(1 * time.Second)
 	}
 
 	data := req.Marshal()
@@ -113,28 +114,32 @@ func (c *Conn) handleSignal(p pdu) error {
 	for len(s) > 0 {
 		// Check if it's a supported request.
 		switch s.code() {
-		case SignalConnectionRequest:
+		case l2cap.SignalConnectionRequest:
 			c.handleConnectionRequest(s)
-		case SignalConfigurationRequest:
+		case l2cap.SignalConfigurationRequest:
 			c.handleConfigurationRequest(s)
-		case SignalDisconnectRequest:
+		case l2cap.SignalDisconnectRequest:
 			c.handleDisconnectRequest(s)
-		case SignalEchoRequest:
+		case l2cap.SignalEchoRequest:
 			c.handleEchoRequest(s)
-		case SignalInformationRequest:
+		case l2cap.SignalInformationRequest:
 			c.handleInformationRequest(s)
-		case SignalCreateChannelRequest:
+		case l2cap.SignalCreateChannelRequest:
 			c.handleCreateChannelRequest(s)
-		case SignalMoveChannelRequest:
+		case l2cap.SignalMoveChannelRequest:
 			c.handleMoveChannelRequest(s)
-		case SignalMoveChannelConfirmation:
+		case l2cap.SignalMoveChannelConfirmation:
 			c.handleMoveChannelConfirmation(s)
-		case SignalConnectionParameterUpdateRequest:
+		case l2cap.SignalConnectionParameterUpdateRequest:
 			c.handleConnectionParameterUpdateRequest(s)
-		case SignalLECreditBasedConnectionRequest:
+		case l2cap.SignalLECreditBasedConnectionRequest:
 			c.LECreditBasedConnectionRequest(s)
-		case SignalLEFlowControlCredit:
+		case l2cap.SignalLEFlowControlCredit:
 			c.LEFlowControlCredit(s)
+		case l2cap.SignalConnectionResponse:
+			c.handleConnectionResponse(s)
+		case l2cap.SignalConfigurationResponse:
+			c.handleConfigurationResponse(s)
 		default:
 			// Check if it's a response to a sent command.
 			select {
@@ -144,9 +149,9 @@ func (c *Conn) handleSignal(p pdu) error {
 			}
 
 			c.sendResponse(
-				SignalCommandReject,
+				l2cap.SignalCommandReject,
 				s.id(),
-				&CommandReject{
+				&l2cap.CommandReject{
 					Reason: 0x0000, // Command not understood.
 				})
 		}
@@ -163,7 +168,32 @@ func (c *Conn) handleConnectionRequest(s sigCmd) {
 
 // handleConfigurationRequest ...
 func (c *Conn) handleConfigurationRequest(s sigCmd) {
-	// TODO:
+	var req l2cap.ConfigurationRequest
+	if err := req.Unmarshal(s.data()); err != nil {
+		return
+	}
+
+	rsp := l2cap.ConfigurationResponse{
+		SourceCID: c.SourceID,
+		Flags:     0x0000,
+		Result:    l2cap.ConfigurationResultSuccessful,
+	}
+	defer c.sendResponse(l2cap.SignalConfigurationResponse, s.id(), rsp)
+
+	for i := 0; i < len(req.ConfigurationOptions); {
+		switch uint8(req.ConfigurationOptions[i]) {
+		case l2cap.MTUOptionType:
+			option := &l2cap.MTUOption{}
+			if err := option.Unmarshal(b); err != nil {
+				rsp.Result = l2cap.ConfigurationResultFailureRejected
+				return
+			}
+			c.rxMTU = option.MTU
+		default:
+			rsp.Result = l2cap.ConfigurationResultFailureUnknown
+			return
+		}
+	}
 }
 
 // handleEchoRequest ...
@@ -188,7 +218,7 @@ func (c *Conn) handleMoveChannelRequest(s sigCmd) {
 
 // DisconnectRequest implements Disconnect Request (0x06) [Vol 3, Part A, 4.6].
 func (c *Conn) handleDisconnectRequest(s sigCmd) {
-	var req DisconnectRequest
+	var req l2cap.DisconnectRequest
 	if err := req.Unmarshal(s.data()); err != nil {
 		return
 	}
@@ -199,9 +229,9 @@ func (c *Conn) handleDisconnectRequest(s sigCmd) {
 		binary.LittleEndian.PutUint16(endpoints, req.SourceCID)
 		binary.LittleEndian.PutUint16(endpoints, req.DestinationCID)
 		c.sendResponse(
-			SignalCommandReject,
+			l2cap.SignalCommandReject,
 			s.id(),
-			&CommandReject{
+			&l2cap.CommandReject{
 				Reason: 0x0002, // Invalid CID in request
 				Data:   endpoints,
 			})
@@ -214,12 +244,54 @@ func (c *Conn) handleDisconnectRequest(s sigCmd) {
 	}
 
 	c.sendResponse(
-		SignalDisconnectResponse,
+		l2cap.SignalDisconnectResponse,
 		s.id(),
-		&DisconnectResponse{
+		&l2cap.DisconnectResponse{
 			DestinationCID: req.DestinationCID,
 			SourceCID:      req.SourceCID,
 		})
+}
+
+// handleConnectionResponse ...
+func (c *Conn) handleConnectionResponse(s sigCmd) {
+	var rsp l2cap.ConnectionResponse
+	if err := rsp.Unmarshal(s.data()); err != nil {
+		return
+	}
+
+	// wait for a non pending result
+	if rsp.Result == l2cap.ConnectionResultPending {
+		c.DestinationID = rsp.DestinationCID
+		switch {
+		case l2cap.ConnectionStatusAuthentication:
+		case l2cap.ConnectionStatusAuthorization:
+		case l2cap.ConnectionStatusNoInfo:
+		}
+		return
+	}
+
+	select {
+	case c.sigSent <- s:
+	default:
+	}
+}
+
+// handleConnectionResponse ...
+func (c *Conn) handleConfigurationResponse(s sigCmd) {
+	var rsp l2cap.ConnectionResponse
+	if err := rsp.Unmarshal(s.data()); err != nil {
+		return
+	}
+
+	// wait for a non pending result
+	if rsp.Result == l2cap.ConfigurationResultPending {
+		return
+	}
+
+	select {
+	case c.sigSent <- s:
+	default:
+	}
 }
 
 // ConnectionParameterUpdateRequest implements Connection Parameter Update Request (0x12) [Vol 3, Part A, 4.20].
@@ -233,15 +305,15 @@ func (c *Conn) handleConnectionParameterUpdateRequest(s sigCmd) {
 	// 0x0000 (Command not understood).
 	if c.param.Role() != roleMaster {
 		c.sendResponse(
-			SignalCommandReject,
+			l2cap.SignalCommandReject,
 			s.id(),
-			&CommandReject{
+			&l2cap.CommandReject{
 				Reason: 0x0000, // Command not understood.
 			})
 
 		return
 	}
-	var req ConnectionParameterUpdateRequest
+	var req l2cap.ConnectionParameterUpdateRequest
 	if err := req.Unmarshal(s.data()); err != nil {
 		return
 	}
@@ -263,9 +335,9 @@ func (c *Conn) handleConnectionParameterUpdateRequest(s sigCmd) {
 	// by its controller if the update actually happens.
 	// TODO: allow users to implement what parameters to accept.
 	c.sendResponse(
-		SignalConnectionParameterUpdateResponse,
+		l2cap.SignalConnectionParameterUpdateResponse,
 		s.id(),
-		&ConnectionParameterUpdateResponse{
+		&l2cap.ConnectionParameterUpdateResponse{
 			Result: 0, // Accept.
 		})
 }
@@ -278,4 +350,111 @@ func (c *Conn) LECreditBasedConnectionRequest(s sigCmd) {
 // LEFlowControlCredit ...
 func (c *Conn) LEFlowControlCredit(s sigCmd) {
 	// TODO:
+}
+
+// InformationRequest [Vol 3, Part A, 4.10]
+func (c *Conn) InformationRequest(infoType uint16, timeout time.Duration) error {
+	req := &l2cap.InformationRequest{}
+	rsp := &l2cap.InformationResponse{}
+	req.InfoType = infoType
+	if err := c.Signal(req, rsp, timeout); err != nil {
+		return err
+	}
+	switch infoType {
+	case l2cap.InfoTypeConnectionlessMTU:
+		c.SetTxMTU(int(binary.LittleEndian.Uint16(rsp.Data)))
+	case l2cap.InfoTypeExtendedFeatures:
+		c.extendedFeatures = binary.LittleEndian.Uint32(rsp.Data)
+	case l2cap.InfoTypeFixedChannels:
+		c.fixedChannels = binary.LittleEndian.Uint64(rsp.Data)
+	default:
+		return errors.New("Invalid infoType")
+	}
+	return nil
+}
+
+// ConnectionRequest [Vol 3, Part A, 4.2]
+func (c *Conn) ConnectionRequest(psm uint16, timeout time.Duration) error {
+	rsp := &l2cap.ConnectionResponse{}
+	req := &l2cap.ConnectionRequest{
+		PSM:       psm,
+		SourceCID: c.SourceID,
+	}
+	if err := c.Signal(req, rsp, timeout); err != nil {
+		return err
+	}
+	switch rsp.Result {
+	case l2cap.ConnectionResultSuccessful:
+	case l2cap.ConnectionResultPending:
+		// should never get here since pending results are already handled
+	case l2cap.ConnectionResultPSMNotSupported:
+		return errors.New("Connection refused - PSM is not supported")
+	case l2cap.ConnectionResultNoResources:
+		return errors.New("Connection refused - No resources available")
+	case l2cap.ConnectionResultSecurityBlock:
+		return errors.New("Connection refused - Security block")
+	}
+	c.DestinationID = rsp.DestinationCID
+	return nil
+}
+
+// ConfigurationRequest [Vol 3, Part A, 4.4]
+func (c *Conn) ConfigurationRequest(options []Option, timeout time.Duration) error {
+
+	respOptions := make([]byte, 0)
+	i := 0
+
+	rsp := &l2cap.ConfigurationResponse{
+		Flags: 0x0001,
+	}
+	req := &l2cap.ConfigurationRequest{
+		DestinationCID: c.DestinationID,
+	}
+
+	// the options need to be split into chunks and sent
+	for i < len(options) || rsp.Flags == 0x0001 {
+
+		req.ConfigurationOptions = make([]byte, 0, c.sigTxMTU-8)
+
+		// fill the request with options
+		for ; i < len(options); i++ {
+			b, err := options[i].Marshal()
+			if err != nil {
+				return err
+			}
+			if len(req.ConfigurationOptions)+len(b) > c.sigTxMTU-8 {
+				break
+			}
+			req.ConfigurationOptions = append(req.ConfigurationOptions, b)
+		}
+
+		// if exntended flow specification is enabled, continuation bit is 0
+		// otherwise if the options can not fit into one request the continuation
+		// bit is 1
+		if c.extendedFeatures&(l2cap.ExtendedFeatureExtendedFlowSpecification+1) == l2cap.ExtendedFeatureExtendedFlowSpecification+1 {
+			req.Flags = 0x0000
+		} else if i < len(options) {
+			req.Flags = 0x0001
+		} else {
+			req.Flags = 0x0000
+		}
+
+		if err := c.Signal(req, rsp, timeout); err != nil {
+			return err
+		}
+
+		switch rsp.Result() {
+		case l2cap.ConfigurationResultSuccessful:
+		case l2cap.ConfigurationResultFailureUnacceptable:
+			return errors.New("Failure - unacceptable parameters")
+		case l2cap.ConfigurationResultFailureRejected:
+			return errors.New("Failure - rejected (no reason provided)")
+		case l2cap.ConfigurationResultFailureUnknown:
+			return errors.New("Failure - unknown options")
+		case l2cap.ConfigurationResultPending:
+			// should never get here, pending rejects are prehandled
+		case l2cap.ConfigurationResultFailureFlowSpecRejected:
+			return errors.New("Failure - flow spec rejected")
+		}
+	}
 }

@@ -13,7 +13,9 @@ func (s *{{esc .Name}}) Marshal() []byte {
 	return buf.Bytes()
 }
 
+{{if .DefaultUnmarshaller}}
 // Unmarshal de-serializes the binary data and stores the result in the receiver.
 func (s *{{esc .Name}}) Unmarshal(b []byte) error {
 	return binary.Read(bytes.NewBuffer(b), binary.LittleEndian, s)
 }
+{{end}}

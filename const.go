@@ -15,7 +15,7 @@ const MaxMTU = 512 + 3
 // length of 6 bytes is used. [Vol 3, Part A, 5.1]
 const MaxACLMTU = 672
 
-// MinACLMTU
+// DefaultACLMTU
 const DefaultACLMTU = 48
 
 // UUIDs ...

@@ -204,13 +204,6 @@ func (p *Client) DiscoverDescriptors(filter []ble.UUID, c *ble.Characteristic) (
 	return c.Descriptors, nil
 }
 
-// Read reads an ACL packet not attached to a characteristic
-func (p *Client) Read() ([]byte, error) {
-	p.Lock()
-	defer p.Unlock()
-	return p.ac.ReadP2P()
-}
-
 // ReadCharacteristic reads a characteristic value from a server. [Vol 3, Part G, 4.8.1]
 func (p *Client) ReadCharacteristic(c *ble.Characteristic) ([]byte, error) {
 	p.Lock()

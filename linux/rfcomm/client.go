@@ -1,10 +1,9 @@
-package spp
+package rfcomm
 
 import (
 	"fmt"
 	"io"
 	"sync"
-	"time"
 
 	"github.com/currantlabs/ble"
 	"github.com/pkg/errors"
@@ -32,8 +31,9 @@ import (
 type Client struct {
 	sync.RWMutex
 
-	l2c ble.Conn
-	p2p chan []byte
+	l2c   ble.Conn
+	p2p   chan []byte
+	chErr chan error
 
 	rxBuf   []byte
 	chTxBuf chan []byte
@@ -44,34 +44,39 @@ func NewClient(l2c ble.Conn) *Client {
 	c := &Client{
 		l2c:     l2c,
 		p2p:     make(chan []byte),
+		chErr:   make(chan error),
 		chTxBuf: make(chan []byte, 1),
-		rxBuf:   make([]byte, ble.MaxMTU),
+		rxBuf:   make([]byte, ble.MaxACLMTU),
 	}
 	go c.loop()
 	return c
 }
 
 // Address returns the address of the client.
-func (p *Client) Address() ble.Addr {
-	p.RLock()
-	defer p.RUnlock()
-	return p.conn.RemoteAddr()
+func (c *Client) Address() ble.Addr {
+	c.RLock()
+	defer c.RUnlock()
+	return c.l2c.RemoteAddr()
 }
 
 // Read ...
 func (c *Client) Read(b []byte) (int, error) {
-	p, ok := <-c.p2p
-	if !ok {
-		return 0, errors.Wrap(io.ErrClosedPipe, "input channel closed")
+	select {
+	case p, ok := <-c.p2p:
+		if !ok {
+			return 0, errors.Wrap(io.ErrClosedPipe, "input channel closed")
+		}
+		if len(p) == 0 {
+			return 0, errors.Wrap(io.ErrUnexpectedEOF, "recieved empty packet")
+		}
+		if len(p) > len(b) {
+			return 0, errors.Wrapf(io.ErrShortBuffer, "payload recieved exceeds sdu buffer")
+		}
+		copy(b[:], p)
+		return len(p), nil
+	case err := <-c.chErr:
+		return 0, err
 	}
-	if len(p) == 0 {
-		return 0, errors.Wrap(io.ErrUnexpectedEOF, "recieved empty packet")
-	}
-	if len(p) > len(b) {
-		return 0, errors.Wrapf(io.ErrShortBuffer, "payload recieved exceeds sdu buffer")
-	}
-	copy(b[:], p)
-	return len(p), nil
 }
 
 // Write ...
@@ -84,57 +89,25 @@ func (c *Client) Write(v []byte) (int, error) {
 	defer func() { c.chTxBuf <- txBuf }()
 
 	copy(txBuf, len(v)+4)
-	copy(txBuf[2:], dcid)
-	copy(txBuf[4:], scid)
+	copy(txBuf[2:], c.l2c.DestinationID)
+	copy(txBuf[4:], c.l2c.SourceID)
 
-	return len(v), c.sendCmd(txBuf)
+	_, err := c.l2c.Write(b)
+	return len(v), err
 }
 
 // CancelConnection disconnects the connection.
-func (p *Client) CancelConnection() error {
-	p.Lock()
-	defer p.Unlock()
-	return p.conn.Close()
+func (c *Client) CancelConnection() error {
+	c.Lock()
+	defer c.Unlock()
+	return c.l2c.Close()
 }
 
 // Disconnected returns a receiving channel, which is closed when the client disconnects.
-func (p *Client) Disconnected() <-chan struct{} {
-	p.Lock()
-	defer p.Unlock()
-	return p.conn.Disconnected()
-}
-
-func (c *Client) sendCmd(b []byte) error {
-	_, err := c.l2c.Write(b)
-	return err
-}
-
-func (c *Client) sendReq(b []byte) (rsp []byte, err error) {
-	if _, err := c.l2c.Write(b); err != nil {
-		return nil, errors.Wrap(err, "send ATT request failed")
-	}
-	for {
-		select {
-		case rsp := <-c.rspc:
-			if rsp[0] == ErrorResponseCode || rsp[0] == rspOfReq[b[0]] {
-				return rsp, nil
-			}
-			// Sometimes when we connect to an Apple device, it sends
-			// ATT requests asynchronously to us. // In this case, we
-			// return an ErrReqNotSupp response, and continue to wait
-			// the response to our request.
-			errRsp := newErrorResponse(rsp[0], 0x0000, ble.ErrReqNotSupp)
-			logger.Debug("client", "req", fmt.Sprintf("% X", b))
-			_, err := c.l2c.Write(errRsp)
-			if err != nil {
-				return nil, errors.Wrap(err, "unexpected ATT response recieved")
-			}
-		case err := <-c.chErr:
-			return nil, errors.Wrap(err, "ATT request failed")
-		case <-time.After(30 * time.Second):
-			return nil, errors.Wrap(ErrSeqProtoTimeout, "ATT request timeout")
-		}
-	}
+func (c *Client) Disconnected() <-chan struct{} {
+	c.Lock()
+	defer c.Unlock()
+	return c.l2c.Disconnected()
 }
 
 // Loop ...
@@ -145,7 +118,7 @@ func (c *Client) loop() {
 		logger.Debug("client", "rsp", fmt.Sprintf("% X", c.rxBuf[:n]))
 		if err != nil {
 			// We don't expect any error from the bearer (L2CAP ACL-U)
-			// Pass it along to the pending request, if any, and escape.
+			// Pass it along to the pending read, if any, and escape.
 			c.chErr <- err
 			return
 		}

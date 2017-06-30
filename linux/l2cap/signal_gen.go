@@ -1,4 +1,4 @@
-package hci
+package l2cap
 
 import (
 	"bytes"
@@ -110,7 +110,7 @@ const SignalConfigurationResponse = 0x05
 // ConfigurationResponse implements Configuration Response (0x05) [Vol 3, Part A, 4.5].
 type ConfigurationResponse struct {
 	SourceCID            uint16
-	FlagsCID             uint16
+	Flags                uint16
 	Result               uint16
 	ConfigurationOptions []byte
 }

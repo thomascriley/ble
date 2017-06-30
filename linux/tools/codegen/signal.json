@@ -12,7 +12,8 @@
                                         "Data": "[]byte"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": false
                 },
                 {
                         "Name": "Connection Request",
@@ -26,7 +27,8 @@
                                         "Source CID": "uint16"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Connection Response",
@@ -46,7 +48,8 @@
                                         "Status": "uint16"
                                 }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Configuration Request",
@@ -63,7 +66,8 @@
                                         "Configuration Options": "[]byte"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": false
                 },
                 {
                         "Name": "Configuration Response",
@@ -74,16 +78,17 @@
                                         "Source CID": "uint16"
                                 },
                                 {
-                                        "Flags CID": "uint16"
+                                        "Flags": "uint16"
                                 },
                                 {
                                         "Result": "uint16"
                                 },
                                 {
                                         "Configuration Options": "[]byte"
-                                } 
+                                }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": false
                 },
                 {
                         "Name": "Disconnect Request",
@@ -97,7 +102,8 @@
                                         "Source CID": "uint16"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Disconnect Response",
@@ -111,7 +117,8 @@
                                         "Source CID": "uint16"
                                 }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Echo Request",
@@ -120,9 +127,10 @@
                         "Fields": [
                                 {
                                         "Data": "uint16"
-                                } 
+                                }
                         ],
-                        "Type": "Requst"
+                        "Type": "Requst",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Echo Response",
@@ -133,7 +141,8 @@
                                         "Data": "[]byte"
                                 }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": false
                 },
                 {
                         "Name": "Information Request",
@@ -144,7 +153,8 @@
                                         "Info Type": "uint16"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Information Response",
@@ -161,7 +171,8 @@
                                         "Data": "[]byte"
                                 }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": false
                 },
                 {
                         "Name": "Create Channel Request",
@@ -178,7 +189,8 @@
                                         "Controller ID": "uint8"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Create Channel Response",
@@ -198,7 +210,8 @@
                                         "Status": "uint16"
                                 }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Move Channel Request",
@@ -212,7 +225,8 @@
                                         "Dest Controller ID": "uint8"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Move Channel Response",
@@ -226,7 +240,8 @@
                                         "Result": "uint16"
                                 }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Move Channel Confirmation",
@@ -240,7 +255,8 @@
                                         "Result": "uint16"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Move Channel Confirmation Response",
@@ -251,7 +267,8 @@
                                         "Initiator CID": "uint16"
                                 }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Connection Parameter Update Request",
@@ -271,7 +288,8 @@
                                         "Timeout Multiplier": "uint16"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Connection Parameter Update Response",
@@ -282,7 +300,8 @@
                                         "Result": "uint16"
                                 }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "LE Credit Based Connection Request",
@@ -305,7 +324,8 @@
                                         "Initial Credits": "uint16"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "LE Credit Based Connection Response",
@@ -328,7 +348,8 @@
                                         "Result": "uint16"
                                 }
                         ],
-                        "Type": "Response"
+                        "Type": "Response",
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "LE Flow Control Credit",
@@ -342,7 +363,8 @@
                                         "Credits": "uint16"
                                 }
                         ],
-                        "Type": "Request"
+                        "Type": "Request",
+                        "DefaultUnmarshaller": true
                 }
         ]
 }

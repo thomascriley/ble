@@ -1,7 +1,15 @@
 package hci
 
 import (
+	"context"
+	"fmt"
+	"net"
+	"time"
+
 	"github.com/currantlabs/ble"
+	"github.com/currantlabs/ble/linux/l2cap"
+	"github.com/currantlabs/ble/linux/rfcomm"
+	"github.com/pkg/errors"
 )
 
 // SetAdvHandler ...
@@ -30,4 +38,79 @@ func (h *HCI) Inquire(length int, numResponses int) error {
 // StopInquiry stops inquiring for BR/EDR devices by sending an InquiryCancel command
 func (h *HCI) StopInquiry() error {
 	return h.Send(&h.params.inquiryCancel, nil)
+}
+
+func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8) (ble.RFCOMMClient, error) {
+	b, err := net.ParseMAC(a.String())
+	if err != nil {
+		return nil, ErrInvalidAddr
+	}
+
+	h.params.Lock()
+	h.params.connBREDRParams.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
+	h.params.connBREDRParams.ClockOffset = clockOffset
+	h.params.connBREDRParams.PageScanRepetitionMode = pageScanRepetitionMode
+	err = h.Send(&h.params.connBREDRParams, nil)
+	h.params.Unlock()
+
+	if err != nil {
+		return nil, err
+	}
+
+	var tmo <-chan time.Time
+	if h.dialerTmo != time.Duration(0) {
+		tmo = time.After(h.dialerTmo)
+	}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-h.done:
+		return nil, h.err
+	case c := <-h.chMasterSPPConn:
+		// increment to the next available dynamicCID channel id
+		c.SourceID = h.dynamicCID
+		if h.dynamicCID == 0xFFFF {
+			h.dynamicCID = cidDynamicStart
+		} else {
+			h.dynamicCID++
+		}
+
+		cli := rfcomm.NewClient(c)
+		if err = c.InformationRequest(l2cap.InfoTypeConnectionlessMTU); err != nil {
+			return err
+		}
+		if err = c.InformationRequest(l2cap.InfoTypeExtendedFeatures); err != nil {
+			return err
+		}
+		// 1.2 - 2.1 + EDR return not supported
+		c.InformationRequest(l2cap.InfoTypeFixedChannels)
+
+		if err = c.ConnectionRequest(0x0003); err != nil {
+			return err
+		}
+
+		// Even if all default values are acceptable, a Configuration Request
+		// packet with no options shall be sent. [Vol 3, Part A, 4.4]
+		options := []l2cap.Option{&l2cap.MTUOption{MTU: 0x03f5}}
+		if err = c.ConfigurationRequest(options); err != nil {
+			return err
+		}
+
+	case <-tmo:
+		h.params.Lock()
+		h.params.connCancelBREDR.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
+		err = h.Send(&h.params.connCancelBREDR, nil)
+		h.params.Unlock()
+
+		if err == nil {
+			// The pending connection was canceled successfully.
+			return nil, fmt.Errorf("connection timed out")
+		}
+		// The connection has been established, the cancel command
+		// failed with ErrDisallowed.
+		if err == ErrDisallowed {
+			return spp.NewClient(<-h.chMasterSPPConn)
+		}
+		return nil, errors.Wrap(err, "cancel connection failed")
+	}
 }
