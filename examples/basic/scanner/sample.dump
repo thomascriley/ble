@@ -117,35 +117,56 @@
 > ACL data: handle 1 flags 0x02 dlen 16
     L2CAP(s): Config req: dcid 0x0040 flags 0x00 clen 4
       MTU 1013
+
+// MTU
 < ACL data: handle 1 flags 0x00 dlen 18
     0000: 0e 00 01 00 05 01 0a 00  45 00 00 00 00 00 01 02  ........E.......
-    0010: f5 03                                             ..
+    0010: f5 03
+
+// SAMB FRAME  (empty)                                  ..
 < ACL data: handle 1 flags 0x00 dlen 8
     0000: 04 00 45 00 03 3f 01 1c                           ..E..?..
+
 > HCI Event: Number of Completed Packets (0x13) plen 5
     handle 1 packets 1
 > HCI Event: Number of Completed Packets (0x13) plen 5
     handle 1 packets 1
+
+// UA FRAME (empty)
 > ACL data: handle 1 flags 0x02 dlen 8
     L2CAP(d): cid 0x0040 len 4 [psm 0]
       0000: 03 73 01 d7                                       .s..
+
+// UIH FRAME (Parameter Negotiation Command)
 < ACL data: handle 1 flags 0x00 dlen 18
     0000: 0e 00 45 00 03 ef 15 83  11 02 f0 07 00 f0 03 00  ..E.............
-    0010: 07 70                                             .p
+    0010: 07 70                                                .p
+
 > HCI Event: Number of Completed Packets (0x13) plen 5
     handle 1 packets 1
+
+// UIH FRAME (Parameter Negotiation Response)
 > ACL data: handle 1 flags 0x02 dlen 18
     L2CAP(d): cid 0x0040 len 14 [psm 0]
       0000: 01 ef 15 81 11 02 e0 07  00 7f 00 00 00 aa        ..............
+
+// SAMB FRAME (empty, server number is set)
 < ACL data: handle 1 flags 0x00 dlen 8
     0000: 04 00 45 00 0b 3f 01 59                           ..E..?.Y
+
 > HCI Event: Number of Completed Packets (0x13) plen 5
     handle 1 packets 1
+
+// UA FRAME (empty, server number set)
 > ACL data: handle 1 flags 0x02 dlen 8
     L2CAP(d): cid 0x0040 len 4 [psm 0]
       0000: 0b 73 01 92                                       .s..
+
+// UIH FRAME (MSC - Modem Status Command)
 < ACL data: handle 1 flags 0x00 dlen 12
     0000: 08 00 45 00 03 ef 09 e3  05 0b 8d 70              ..E........p
+
+// UIH FRAME (MSC - Model Status Response)
 > ACL data: handle 1 flags 0x02 dlen 12
     L2CAP(d): cid 0x0040 len 8 [psm 0]
       0000: 01 ef 09 e3 05 0b 0d aa                           ........

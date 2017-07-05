@@ -1,13 +1,13 @@
 package rfcomm
 
 type frame struct {
-	CommmandResponse   bool
-	DLCI               bool
-	ServerNum          int
-	PollFinal          bool
-	ControlNumber      int
+	CommmandResponse   uint8
+	Direction          uint8
+	ServerChannel      uint8
+	PollFinal          uint8
+	ControlNumber      uint8
 	Payload            []byte
-	FrameCheckSequence int
+	FrameCheckSequence uint8
 }
 
 func (f *frame) Marshal(b []byte) (int, error) {
@@ -16,34 +16,15 @@ func (f *frame) Marshal(b []byte) (int, error) {
 	}
 
 	// Address [5.4]
-	ea := true
-	if ea {
-		b[0] = 0x01
-	} else {
-		b[0] = 0x00
-	}
-	if f.CommmandResponse {
-		b[0] = b[0] | 0x02
-	}
-	if f.DLCI {
-		b[0] = b[0] | 0x04
-	}
-	b[0] = b[0] | uint8(f.ServerNum)<<3
+	ea := 0x01
+	b[0] = ea&0x01 | f.CommmandResponse&0x01<<1 | f.Direction&0x01<<2 | f.ServerChannel&0x1F<<3
 
 	// control field
-	b[1] = uint8(f.ControlNumber)
-	if f.PollFinal {
-		b[1] = b[1] | 0x10
-	}
+	b[1] = f.ControlNumber | f.PollFinal&0x01<<4
 
 	// length
-	ea = true
-	if ea {
-		b[2] = 0x00
-	} else {
-		b[2] = 0x01
-	}
-	b[2] = b[2] | uint8(len(f.Payload))<<1
+	ea = 0x01
+	b[2] = ea | uint8(len(f.Payload))<<1
 
 	// payload
 	copy(b[3:], f.Payload)
@@ -59,56 +40,42 @@ func (f *frame) Marshal(b []byte) (int, error) {
 }
 
 func (f *frame) Unmarshal(b []byte) error {
-	i := 0
+	if len(b) < 3 {
+		return ErrInvalidArgument
+	}
 
 	// Address
-	if len(b) <= i {
-		return ErrInvalidArgument
-	}
-	f.CommmandResponse = b[i]>>1&0x01 == 0x01
-	f.DLCI = b[i]>>2&0x01 == 0x01
-	f.ServerNum = int(b[i] >> 3)
-	i++
+	f.CommmandResponse = b[0] >> 1 & 0x01
+	f.Direction = b[0] >> 2 & 0x01
+	f.ServerChannel = b[0] >> 3 & 0x1F
 
 	// Control Field
-	if len(b) <= i {
-		return ErrInvalidArgument
-	}
-	f.ControlNumber = int(b[i] & 0xF7)
-	f.PollFinal = b[i]&0x08 == 0x08
-	i++
+	f.ControlNumber = b[1] & 0xF7
+	f.PollFinal = b[1] >> 4 & 0x01
 
 	// Length
 	var length int
-	if len(b) <= i {
+	ea := b[2] & 0x01
+	if ea == 0x01 {
+		length = int(b[2] >> 1)
+	} else if len(b) < 4 {
 		return ErrInvalidArgument
-	}
-	if b[i]&0x01 == 0x01 {
-		length = int(b[i] >> 1)
-		i++
-	} else {
-		if len(b) < i {
-			return ErrInvalidArgument
-		}
-		length = int(b[i])>>1 | int(b[i+2])<<7
-		i = i + 2
+	} else { // LittleEndian
+		length = int(b[2])>>1 | int(b[3])<<7
 	}
 
-	// skip the credit if there is one
-	if f.PollFinal {
-		i++
-	}
+	// TODO: Process credit if PollFile = 0x01
 
 	// Payload
+	i := 3 + ea + f.PollFinal
 	if len(b) <= i+length {
 		return ErrInvalidArgument
 	}
 	f.Payload = make([]byte, length)
 	copy(f.Payload[:], b[i:i+length])
-	i = i + length
 
 	// FCS
 	// TODO: Check and through error if doesn't match
-	// fcs := b[i]
+	// fcs := b[i+length]
 	return nil
 }

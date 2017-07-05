@@ -6,12 +6,18 @@ import (
 	"time"
 
 	"github.com/currantlabs/ble"
+	"github.com/currantlabs/ble/linux/l2cap"
+	"github.com/currantlabs/ble/linux/multiplexor"
 	"github.com/pkg/errors"
 )
 
 var (
 	// ErrInvalidArgument means one or more of the arguments are invalid.
 	ErrInvalidArgument = errors.New("invalid argument")
+)
+
+var (
+	serverChannelNumbers = newServerChannels()
 )
 
 // TODO: Added the following LMP Methods
@@ -42,9 +48,16 @@ type Client struct {
 
 	rxBuf   []byte
 	chTxBuf chan []byte
+
+	dlci         uint8
+	priority     uint8
+	maxFrameSize uint16
+
+	serverChannel int
 }
 
-// NewClient returns an Attribute Protocol Client.
+// NewClient returns an RFCOMM Client that has been initialized according to the
+// RFCOMM specifications.
 func NewClient(l2c ble.Conn) *Client {
 	c := &Client{
 		l2c:     l2c,
@@ -54,6 +67,58 @@ func NewClient(l2c ble.Conn) *Client {
 		rxBuf:   make([]byte, ble.MaxACLMTU),
 	}
 	go c.loop()
+
+	if err := c.l2c.InformationRequest(l2cap.InfoTypeConnectionlessMTU, timeout); err != nil {
+		return nil, err
+	}
+	if err := c.l2c.InformationRequest(l2cap.InfoTypeExtendedFeatures, timeout); err != nil {
+		return nil, err
+	}
+	// 1.2 - 2.1 + EDR will return not supported
+	c.l2c.InformationRequest(l2cap.InfoTypeFixedChannels, timeout)
+
+	if err := c.l2c.ConnectionRequest(psmRFCOMM, timeout); err != nil {
+		return nil, err
+	}
+
+	// Even if all default values are acceptable, a Configuration Request
+	// packet with no options shall be sent. [Vol 3, Part A, 4.4]
+	// TODO: make this non-static
+	options := []l2cap.Option{&l2cap.MTUOption{MTU: 0x03f5}}
+	if err := c.l2c.ConfigurationRequest(options, timeout); err != nil {
+		return nil, err
+	}
+
+	// first send a SABM frame and expect an UA frame. If rejected
+	// device with send a DM frame
+	if err := c.sendSABM(); err != nil {
+		return nil, err
+	}
+
+	// add to list of connected RFCOMM devices
+	serverChannel, err := serverChannelNumbers.Add(c)
+	if err != nil {
+		c.CancelConnection()
+	}
+	c.serverChannel = serverChannel
+
+	// send parameter negotiation
+	if err = c.sendPN(); err != nil {
+		return nil, err
+	}
+
+	// send SABM on (DLCI X)
+	if err = c.sendSABM(); err != nil {
+		return nil, err
+	}
+
+	// LMP Authentication
+
+	// receive UA Frame on (DCLI X)
+
+	// MSC FRAME
+
+	// Data on UIH Frame
 	return c
 }
 
@@ -106,7 +171,7 @@ func (c *Client) Write(v []byte) (int, error) {
 		ControlNumber:      ControlNumberUIH,
 		CommmandResponse:   true,
 		DLCI:               false,
-		ServerNum:          1,
+		ServerNum:          c.serverChannel,
 		PollFinal:          false,
 		Payload:            v,
 		FrameCheckSequence: 0x9a})
@@ -116,6 +181,7 @@ func (c *Client) Write(v []byte) (int, error) {
 func (c *Client) CancelConnection() error {
 	c.Lock()
 	defer c.Unlock()
+	c.sendDISC()
 	return c.l2c.Close()
 }
 
@@ -126,49 +192,159 @@ func (c *Client) Disconnected() <-chan struct{} {
 	return c.l2c.Disconnected()
 }
 
-func (c *Client) sendSABMFrame() error {
-
-	err := c.sendFrame(frame{
-		ControlNumber:      ControlNumberSABM,
-		CommmandResponse:   true,
-		DLCI:               false,
-		ServerNum:          0,
-		PollFinal:          true,
-		Payload:            []byte{},
-		FrameCheckSequence: 0x1c})
-	if err != nil {
+func (c *Client) sendDISC() error {
+	defer serverChannelNumbers.Remove(c.serverChannel)
+	if err = c.sendDISCFrame(); err != nil {
 		return err
 	}
-
 	select {
-	case p, ok := <-c.p2p:
-		if !ok {
-			return errors.New("Channel closed")
-		}
-		var frm frame
-		if err = frm.Unmarshal(p); err != nil {
-			return err
-		}
-		switch int(frm.ControlNumber) {
-		case ControlNumberDISC:
-			return errors.New("Receveived disconnect")
-		case ControlNumberDM:
-			return errors.New("Received disconnect mode")
-		case ControlNumberUIH:
-			fallthrough
-		case ControlNumberSABM:
-			return errors.New("Received unexepcted control number")
-		case ControlNumberUA:
-			return nil
-		}
+	case <-c.p2p:
 	case <-time.After(60 * time.Second):
-		// TODO: must send a ControlNumberDISC to the SABM channel
-		return errors.New("Timed out")
 	}
 	return nil
 }
 
+func (c *Client) sendSABM() error {
+
+	if err := c.sendSABMFrame(); err != nil {
+		return err
+	}
+
+	frm, err := c.getFrame()
+	if err != nil {
+		return err
+	}
+
+	switch frm.ControlNumber {
+	case ControlNumberUA:
+	default:
+		c.sendDISC()
+		c.l2c.Close()
+		return errors.New("Received unexpected control number")
+	}
+	return nil
+}
+
+func (c *Client) sendParameterNegotiation() error {
+
+	priority = 0x07
+	maxFrameSize = 0x03f0
+	commandResponse = 0x01
+	direction = 0x01
+
+	err := c.sendMultiplexorFrame(multiplexor.ParameterNegotiation{
+		CommandResponse:        commandResponse,
+		Direction:              direction,
+		ServerNumber:           c.serverNum,
+		FrameType:              FrameTypeUIH,
+		ConvergenceLayer:       ConvergenceLayer,
+		CreditBasedFrowControl: true,
+		Priority:               priority,
+		Timer:                  Timer,
+		MaxSize:                maxFrameSize,
+		MaxRetransmissions:     MaxRetransmissions,
+		WindowSize:             WindowSize,
+	})
+	if err != nil {
+		return err
+	}
+
+	// One device sends a PN message, and the other responds with another PN message.
+	// The response may not change the DLCI, the priority, the convergence layer, or the timer
+	// value. The response may send back a different timer value. In this case, the device which
+	// sent the first PN messages will still use the timer it proposed, but the device at the other
+	// end of the connection will use the value it sent in its message.
+	// The response may have a smaller value for the maximum frame size, but it may not
+	// propose a larger value for this parameter [ pg. 183 ]
+
+	m, err := c.getMultiplexorFrame()
+	if err != nil {
+		return err
+	}
+
+	switch m.(type) {
+	case multiplexor.ParameterNegotiation:
+		prm := m.(*multiplexor.ParameterNegotiation)
+		if c.serverNum != prm.ServerNumber {
+			return errors.New("The device attempted to change the DLCI")
+		} else if priority != prm.Priority {
+			return errors.New("The device attempted to change the priority")
+		} else if maxFrameSize < prm.MaxSize {
+			return errors.New("The device is trying to use a max frame size greater than proposed")
+		}
+		c.priority = prm.Priority
+		c.maxFrameSize = prm.MaxSize
+	default:
+		c.sendDISC()
+		c.l2c.Close()
+		return errors.New("Received unexpected multiplexor")
+	}
+	return nil
+}
+
+// Multiplexor commands and responses are sent on DLCI = 0. The multiplexor commands
+// and responses are carried as messages inside an RFCOMM UIH frame as shown in
+// Figure 10–10. It is possible to send several multiplexor command messages in
+// one RFCOMM frame, or to split a multiplexor command message over more than one frame.
+// [pg. 181]
+func (c *Client) sendMultiplexorFrame(m multiplexor.Multiplexor) error {
+	b, err := m.MarshalBinary()
+	if err != nil {
+		return nil
+	}
+	return c.sendUIHFrame(0x00, 0x00, b)
+}
+
+func (c *Client) getMultiplexorFrame() (multiplexor.Multiplexor, error) {
+	frm, err := c.getFrame()
+	if err != nil {
+		return nil, err
+	}
+	if frm.ControlNumber == ControlNumberUIH {
+		return multiplexor.UnmarshalBinary(frm.Payload)
+	}
+	c.sendDISC()
+	c.l2c.Close()
+	return errors.New("Received unexpected control number")
+}
+
+func (c *Client) sendSABMFrame(serverChannel uint8) error {
+	return c.sendFrame(frame{
+		Direction:          0x01,
+		ServerChannel:      serverChannel,
+		ControlNumber:      ControlNumberSABM,
+		CommmandResponse:   0x01,
+		Direction:          0x01,
+		PollFinal:          0x01,
+		Payload:            []byte{},
+		FrameCheckSequence: 0x1c})
+}
+
+func (c *Client) sendUIHFrame(direction uint8, serverChannel uint8, data []byte) error {
+	return c.sendFrame(frame{
+		Direction:          direction,
+		ServerChannel:      serverChannel,
+		ControlNumber:      ControlNumberUIH,
+		CommmandResponse:   0x01,
+		PollFinal:          0x01,
+		Payload:            data,
+		FrameCheckSequence: 0x70})
+}
+
+func (c *Client) sendDISCFrame() error {
+	return c.sendFrame(frame{
+		Direction:          0x01,
+		ServerChannel:      c.serverChannel,
+		ControlNumber:      ControlNumberDISC,
+		CommmandResponse:   0x01,
+		Direction:          0x01,
+		PollFinal:          0x01,
+		Payload:            []byte{},
+		FrameCheckSequence: 0x00})
+}
+
 func (c *Client) sendFrame(frm frame) error {
+
 	txBuf := <-c.chTxBuf
 	defer func() { c.chTxBuf <- txBuf }()
 
@@ -183,6 +359,37 @@ func (c *Client) sendFrame(frm frame) error {
 
 	_, err = c.l2c.Write(txBuf[:n])
 	return err
+}
+
+func (c *Client) getFrame() (*frame, error) {
+	// l2cap has been setup, now we need to setup the RFCOMM connection.
+	// command timeouts are 60s, if times out then send a DISC frame
+	// on the original SAMB channel
+	select {
+	case p, ok := <-c.p2p:
+		if !ok {
+			return nil, errors.New("Channel closed")
+		}
+		var frm *frame
+		if err = frm.Unmarshal(p); err != nil {
+			return nil, err
+		}
+		switch int(frm.ControlNumber) {
+		case ControlNumberDISC:
+			serverChannelNumbers.Remove(c.serverChannel)
+			c.l2c.Close()
+			return nil, errors.New("Received disconnect")
+		case ControlNumberDM:
+			serverChannelNumbers.Remove(c.serverChannel)
+			c.l2c.Close()
+			return nil, errors.New("Received disconnect mode")
+		}
+		return frm, nil
+	case <-time.After(60 * time.Second):
+		c.sendDISC()
+		c.l2c.Close()
+		return nil, errors.New("Timed out")
+	}
 }
 
 // Loop ...

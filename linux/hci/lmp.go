@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/currantlabs/ble"
-	"github.com/currantlabs/ble/linux/l2cap"
 	"github.com/currantlabs/ble/linux/rfcomm"
 	"github.com/pkg/errors"
 )
@@ -78,34 +77,7 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		timeout := time.Duration(15 * time.Second)
 
 		cli := rfcomm.NewClient(c)
-		if err = c.InformationRequest(l2cap.InfoTypeConnectionlessMTU, timeout); err != nil {
-			return nil, err
-		}
-		if err = c.InformationRequest(l2cap.InfoTypeExtendedFeatures, timeout); err != nil {
-			return nil, err
-		}
-		// 1.2 - 2.1 + EDR will return not supported
-		c.InformationRequest(l2cap.InfoTypeFixedChannels, timeout)
-
-		if err = c.ConnectionRequest(psmRFCOMM, timeout); err != nil {
-			return nil, err
-		}
-
-		// Even if all default values are acceptable, a Configuration Request
-		// packet with no options shall be sent. [Vol 3, Part A, 4.4]
-		// TODO: make this non-static
-		options := []l2cap.Option{&l2cap.MTUOption{MTU: 0x03f5}}
-		if err = c.ConfigurationRequest(options, timeout); err != nil {
-			return nil, err
-		}
-
-		// l2cap has been setup, now we need to setup the RFCOMM connection.
-		// command timeouts are 60s, if times out then send a DISC frame
-		// on the original SAMB channel
-
-		// first send a SABM frame and expect an UA frame. If rejected
-		// device with send a DM frame
-		if err = cli.SendSABM(); err != nil {
+		if err = cli.connect(); err != nil {
 			return nil, err
 		}
 		return cli, nil
