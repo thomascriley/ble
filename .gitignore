@@ -1,5 +1,6 @@
 .*.swp
 .tags
 .tags1
+.DS_Store
 
 /examples/bin/*
