@@ -281,11 +281,12 @@ func genEvt(b []byte, w io.Writer, t *template.Template) {
 
 // Signal Packet format
 type signal struct {
-	Name   string
-	Spec   string
-	Code   string
-	Fields []field
-	Type   string
+	Name                string
+	Spec                string
+	Code                string
+	Fields              []field
+	Type                string
+	DefaultUnmarshaller bool
 }
 
 type signals struct {
@@ -298,6 +299,31 @@ func genSignal(b []byte, w io.Writer, t *template.Template) {
 		log.Printf("failed to read spec.json, err: %s", err)
 	}
 	for _, p := range signals.Signals {
+		if err := t.Execute(w, p); err != nil {
+			log.Fatalf("execution: %s", err)
+		}
+	}
+}
+
+// Option Packet format
+type option struct {
+	Name   string
+	Spec   string
+	Type   string
+	Fields []field
+	Length string
+}
+
+type options struct {
+	Options []option
+}
+
+func genOption(b []byte, w io.Writer, t *template.Template) {
+	var options options
+	if err := json.Unmarshal(b, &options); err != nil {
+		log.Printf("failed to read spec.json, err: %s", err)
+	}
+	for _, p := range options.Options {
 		if err := t.Execute(w, p); err != nil {
 			log.Fatalf("execution: %s", err)
 		}
@@ -356,6 +382,13 @@ func main() {
 			log.Fatalf("parsing: %s", err)
 		}
 		genSignal(b, w, t)
+	case "option":
+		fmt.Fprintf(w, "package l2cap\n")
+		t, err := template.New(*tmpl).Funcs(funcMap).Parse(string(input("option.tmpl")))
+		if err != nil {
+			log.Fatalf("parsing: %s", err)
+		}
+		genOption(b, w, t)
 	case "att":
 		fmt.Fprintf(w, "package att\n")
 		t, err := template.New(*tmpl).Funcs(funcMap).Parse(string(input("att.tmpl")))

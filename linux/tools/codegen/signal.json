@@ -9,7 +9,13 @@
                                         "Reason": "uint16"
                                 },
                                 {
-                                        "Data": "[]byte"
+                                        "Actual Sig MTU": "uint16"
+                                },
+                                {
+                                        "Source CID": "uint16"
+                                },
+                                {
+                                        "Destination CID": "uint16"
                                 }
                         ],
                         "Type": "Request",
@@ -63,7 +69,7 @@
                                         "Flags": "uint16"
                                 },
                                 {
-                                        "Configuration Options": "[]byte"
+                                        "Configuration Options": "[]Option"
                                 }
                         ],
                         "Type": "Request",
@@ -84,7 +90,7 @@
                                         "Result": "uint16"
                                 },
                                 {
-                                        "Configuration Options": "[]byte"
+                                        "Configuration Options": "[]Option"
                                 }
                         ],
                         "Type": "Response",
@@ -138,11 +144,11 @@
                         "Code": "0x09",
                         "Fields": [
                                 {
-                                        "Data": "[]byte"
+                                        "Data": "uint16"
                                 }
                         ],
                         "Type": "Response",
-                        "DefaultUnmarshaller": false
+                        "DefaultUnmarshaller": true
                 },
                 {
                         "Name": "Information Request",
@@ -168,7 +174,13 @@
                                         "Result": "uint16"
                                 },
                                 {
-                                        "Data": "[]byte"
+                                        "ConnectionlessMTU": "uint16"
+                                },
+                                {
+                                        "ExtendedFeatureMask": "uint32"
+                                },
+                                {
+                                        "FixedChannels": "uint64"
                                 }
                         ],
                         "Type": "Response",

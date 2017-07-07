@@ -1,6 +1,7 @@
 package hci
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -31,6 +32,11 @@ type handlerFn func(b []byte) error
 type pkt struct {
 	cmd  Command
 	done chan []byte
+}
+
+type nameHandlers struct {
+	sync.Mutex
+	handlers map[ble.Addr]chan *nameEvent
 }
 
 // NewHCI returns a hci device.
@@ -103,6 +109,9 @@ type HCI struct {
 	// Inquiry scan handler
 	inqHandler ble.InqHandler
 
+	// Outstanding Remote Name Requests
+	nameHandlers *nameHandlers
+
 	// dynamicCID pointer to next available channel for LMP connections for BR/EDR
 	dynamicCID uint16
 
@@ -151,8 +160,10 @@ func (h *HCI) Init() error {
 	h.evth[evt.InquiryResultwithRSSICode] = h.handleInquiryWithRSSI
 	h.evth[evt.ExtendedInquiryCode] = h.handleExtendedInquiry
 	h.evth[evt.ConnectionCompleteCode] = h.handleConnectionComplete
-	h.evth[evt.PageScanRetitionModeChangeCode] = h.handlePageScanRepetitionModeChange
+	h.evth[evt.PageScanRepetitionModeChangeCode] = h.handlePageScanRepetitionModeChange
 	h.evth[evt.ReadRemoteSupportedFeaturesCompleteCode] = h.handleReadRemoteSupportedFeaturesComplete
+
+	h.nameHandlers = &nameHandlers{handlers: make(map[ble.Addr]chan *nameEvent, 0)}
 
 	skt, err := socket.NewSocket(h.id)
 	if err != nil {
@@ -546,8 +557,7 @@ func (h *HCI) handleExtendedInquiry(b []byte) error {
 	}
 
 	// always a single response [Vol2, 7.7.38]
-	inq := newInquiry(evt.ExtendedInquiry(b), 0)
-	go h.inqHandler(inq)
+	go h.inqHandler(newInquiry(evt.ExtendedInquiry(b), 0))
 
 	return nil
 }
@@ -559,8 +569,7 @@ func (h *HCI) handleInquiryResult(b []byte) error {
 
 	e := evt.InquiryResult(b)
 	for i := 0; i < int(e.NumResponses()); i++ {
-		inq := newInquiry(e, i)
-		go h.inqHandler(inq)
+		go h.inqHandler(newInquiry(e, i))
 	}
 
 	return nil
@@ -573,7 +582,6 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 
 	e := evt.InquiryResultwithRSSI(b)
 	for i := 0; i < int(e.NumResponses()); i++ {
-		inq := newInquiry(e, i)
 		go h.inqHandler(newInquiry(e, i))
 	}
 
@@ -599,7 +607,7 @@ func (h *HCI) handleConnectionComplete(b []byte) error {
 	return nil
 }
 
-func (h *HCI) handleReadRemoteSupportedFeature(b []byte) error {
+func (h *HCI) handleReadRemoteSupportedFeaturesComplete(b []byte) error {
 	e := evt.ReadRemoteSupportedFeaturesComplete(b)
 	if e.Status() == 0x00 {
 		h.muConns.Lock()
@@ -619,5 +627,31 @@ func (h *HCI) handlePageScanRepetitionModeChange(b []byte) error {
 
 	// remote controller has successfully changed the page
 	// scan repetition mode [ Vol 2, 3.7, Table 3.8 ]
+	return nil
+}
+
+// [ Vol 2, 7.7.7 ]
+func (h *HCI) handleReadRemoteNameRequestCompleteEvent(b []byte) error {
+	e := evt.RemoteNameRequestComplete(b)
+
+	nameEvent := &nameEvent{}
+	if e.Status() == 0x00 {
+		name := e.RemoteName()
+		i := bytes.IndexByte(name[:], 0x00)
+		if i == -1 {
+			i = len(name)
+		}
+		nameEvent.name = string(name[0:i])
+	} else {
+		nameEvent.err = fmt.Errorf("The remote name request command failed: %X", e.Status())
+	}
+
+	h.nameHandlers.Lock()
+	defer h.nameHandlers.Unlock()
+	ch, ok := h.nameHandlers.handlers[ble.NewAddr(fmt.Sprintf("%X", e.BDADDR()))]
+	if !ok {
+		return fmt.Errorf("Received remote name request complete from unknown address: %X", e.BDADDR)
+	}
+	ch <- nameEvent
 	return nil
 }

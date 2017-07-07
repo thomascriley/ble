@@ -1,0 +1,126 @@
+{
+        "Options": [
+                {
+                        "Name": "MTU",
+                        "Spec": "Vol 3, Part A, 5.1",
+                        "Type": "0x01",
+                        "Length": "0x02",
+                        "Fields": [
+                                {
+                                        "MTU": "uint16"
+                                }
+                        ]
+                },
+                {
+                        "Name": "Flush Timeout",
+                        "Spec": "Vol 3, Part A, 5.2",
+                        "Type": "0x02",
+                        "Length": "0x02",
+                        "Fields": [
+                                {
+                                        "Flush Timeout": "uint16"
+                                }
+                        ]
+                },
+                {
+                        "Name": "QoS",
+                        "Spec": "Vol 3, Part A, 5.3",
+                        "Type": "0x03",
+                        "Length": "0x13",
+                        "Fields": [
+                                {
+                                        "Flags": "uint8"
+                                },
+                                {
+                                        "Service Type": "uint8"
+                        	},
+                                {
+                                        "Token Bucket Size": "uint32"
+                                },
+                                {
+                                        "Peak Bandwidth": "uint32"
+                        	},
+                                {
+                                        "Latency": "uint32"
+                        	},
+                                {
+                                        "Delay Variation": "uint32"
+                                }
+                        ]
+                },
+                {
+                        "Name": "Retransmission And Flow Control",
+                        "Spec": "Vol 3, Part A, 5.4",
+                        "Type": "0x04",
+                        "Length": "0x09",
+                        "Fields": [
+                                {
+                                        "Mode": "uint8"
+                                },
+                                {
+                                        "Tx Window Size": "uint8"
+                        	},
+                                {
+                                        "Max Transmit": "uint8"
+                                },
+                                {
+                                        "Retransmission Timeout": "uint16"
+                        	},
+                                {
+                                        "Monitor Timeout": "uint16"
+                        	},
+                                {
+                                        "Maximum PDU Size": "uint16"
+                                }
+                        ]
+                },
+                {
+                        "Name": "Frame Check Sequence",
+                        "Spec": "Vol 3, Part A, 5.5",
+                        "Type": "0x05",
+                        "Length": "0x01",
+                        "Fields": [
+                                {
+                                        "FCS Type": "uint8"
+                                }
+                        ]
+                },
+                {
+                        "Name": "Extended Flow Specification",
+                        "Spec": "Vol 3, Part A, 5.6",
+                        "Type": "0x06",
+                        "Length": "0x10",
+                        "Fields": [
+                                {
+                                        "Identifier": "uint8"
+                                },
+                                {
+                                        "Service Type": "uint8"
+                        	},
+                                {
+                                        "Maximum SDU Size": "uint8"
+                                },
+                                {
+                                        "SDU Interarrival Time": "uint16"
+                        	},
+                                {
+                                        "Access Latency": "uint16"
+                        	},
+                                {
+                                        "Flush Timeout": "uint16"
+                                }
+                        ]
+                },
+                {
+                        "Name": "Extended Window Size",
+                        "Spec": "Vol 3, Part A, 5.6",
+                        "Type": "0x07",
+                        "Length": "0x02",
+                        "Fields": [
+                                {
+                                        "Max Window Size": "uint8"
+                                }
+                        ]
+                }
+        ]
+}

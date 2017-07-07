@@ -40,6 +40,9 @@ type Device interface {
 	// Inquire starts a BR/EDR scan
 	Inquire(ctx context.Context, numResponses int, h InqHandler) error
 
+	// RequestRemoteName queries the remote BR/EDR device for its name
+	RequestRemoteName(a Addr) (string, error)
+
 	// Dial ...
 	Dial(ctx context.Context, a Addr) (Client, error)
 

@@ -171,7 +171,6 @@ func (c *Conn) Read(sdu []byte) (n int, err error) {
 	// Assume it's a B-Frame.
 	slen := p.dlen()
 	data := p.payload()
-	cid := p.cid()
 	if c.leFrame {
 		// LE-Frame.
 		slen = leFrameHdr(p).slen()

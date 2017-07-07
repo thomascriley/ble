@@ -10,24 +10,14 @@ const SignalCommandReject = 0x01
 
 // CommandReject implements Command Reject (0x01) [Vol 3, Part A, 4.1].
 type CommandReject struct {
-	Reason uint16
-	Data   []byte
+	Reason         uint16
+	ActualSigMTU   uint16
+	SourceCID      uint16
+	DestinationCID uint16
 }
 
 // Code returns the event code of the command.
 func (s CommandReject) Code() int { return 0x01 }
-
-// Marshal serializes the command parameters into binary form.
-func (s *CommandReject) Marshal() []byte {
-	buf := bytes.NewBuffer(make([]byte, 0))
-	binary.Write(buf, binary.LittleEndian, s)
-	return buf.Bytes()
-}
-
-// Unmarshal de-serializes the binary data and stores the result in the receiver.
-func (s *CommandReject) Unmarshal(b []byte) error {
-	return binary.Read(bytes.NewBuffer(b), binary.LittleEndian, s)
-}
 
 // SignalConnectionRequest is the code of Connection Request signaling packet.
 const SignalConnectionRequest = 0x02
@@ -86,23 +76,11 @@ const SignalConfigurationRequest = 0x04
 type ConfigurationRequest struct {
 	DestinationCID       uint16
 	Flags                uint16
-	ConfigurationOptions []byte
+	ConfigurationOptions []Option
 }
 
 // Code returns the event code of the command.
 func (s ConfigurationRequest) Code() int { return 0x04 }
-
-// Marshal serializes the command parameters into binary form.
-func (s *ConfigurationRequest) Marshal() []byte {
-	buf := bytes.NewBuffer(make([]byte, 0))
-	binary.Write(buf, binary.LittleEndian, s)
-	return buf.Bytes()
-}
-
-// Unmarshal de-serializes the binary data and stores the result in the receiver.
-func (s *ConfigurationRequest) Unmarshal(b []byte) error {
-	return binary.Read(bytes.NewBuffer(b), binary.LittleEndian, s)
-}
 
 // SignalConfigurationResponse is the code of Configuration Response signaling packet.
 const SignalConfigurationResponse = 0x05
@@ -112,23 +90,11 @@ type ConfigurationResponse struct {
 	SourceCID            uint16
 	Flags                uint16
 	Result               uint16
-	ConfigurationOptions []byte
+	ConfigurationOptions []Option
 }
 
 // Code returns the event code of the command.
 func (s ConfigurationResponse) Code() int { return 0x05 }
-
-// Marshal serializes the command parameters into binary form.
-func (s *ConfigurationResponse) Marshal() []byte {
-	buf := bytes.NewBuffer(make([]byte, 0))
-	binary.Write(buf, binary.LittleEndian, s)
-	return buf.Bytes()
-}
-
-// Unmarshal de-serializes the binary data and stores the result in the receiver.
-func (s *ConfigurationResponse) Unmarshal(b []byte) error {
-	return binary.Read(bytes.NewBuffer(b), binary.LittleEndian, s)
-}
 
 // SignalDisconnectRequest is the code of Disconnect Request signaling packet.
 const SignalDisconnectRequest = 0x06
@@ -206,7 +172,7 @@ const SignalEchoResponse = 0x09
 
 // EchoResponse implements Echo Response (0x09) [Vol 3, Part A, 4.9].
 type EchoResponse struct {
-	Data []byte
+	Data uint16
 }
 
 // Code returns the event code of the command.
@@ -252,25 +218,16 @@ const SignalInformationResponse = 0x0B
 
 // InformationResponse implements Information Response (0x0B) [Vol 3, Part A, 4.11].
 type InformationResponse struct {
-	InfoType uint16
-	Result   uint16
-	Data     []byte
+	InfoType            uint16
+	Result              uint16
+	Data                []byte
+	ConnectionlessMTU   uint16
+	ExtendedFeatureMask uint32
+	FixedChannels       uint64
 }
 
 // Code returns the event code of the command.
 func (s InformationResponse) Code() int { return 0x0B }
-
-// Marshal serializes the command parameters into binary form.
-func (s *InformationResponse) Marshal() []byte {
-	buf := bytes.NewBuffer(make([]byte, 0))
-	binary.Write(buf, binary.LittleEndian, s)
-	return buf.Bytes()
-}
-
-// Unmarshal de-serializes the binary data and stores the result in the receiver.
-func (s *InformationResponse) Unmarshal(b []byte) error {
-	return binary.Read(bytes.NewBuffer(b), binary.LittleEndian, s)
-}
 
 // SignalCreateChannelRequest is the code of Create Channel Request signaling packet.
 const SignalCreateChannelRequest = 0x0C

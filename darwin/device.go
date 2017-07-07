@@ -360,6 +360,11 @@ func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr) (ble.RFCOMMClient, 
 	return nil, errors.New("Not implemented")
 }
 
+// RequestRemoteName
+func (h *Device) RequestRemoteName(a ble.Addr) (string, error) {
+	return "", errors.New("Not implemented")
+}
+
 // Stop ...
 func (d *Device) Stop() error {
 	return nil

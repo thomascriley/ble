@@ -7,10 +7,16 @@ import (
 	"time"
 
 	"github.com/currantlabs/ble"
+	"github.com/currantlabs/ble/linux/hci/cmd"
 	"github.com/currantlabs/ble/linux/l2cap"
 	"github.com/currantlabs/ble/linux/rfcomm"
 	"github.com/pkg/errors"
 )
+
+type nameEvent struct {
+	name string
+	err  error
+}
 
 // SetAdvHandler ...
 func (h *HCI) SetInqHandler(ah ble.InqHandler) error {
@@ -38,6 +44,35 @@ func (h *HCI) Inquire(length int, numResponses int) error {
 // StopInquiry stops inquiring for BR/EDR devices by sending an InquiryCancel command
 func (h *HCI) StopInquiry() error {
 	return h.Send(&h.params.inquiryCancel, nil)
+}
+
+func (h *HCI) RequestRemoteName(a ble.Addr) (string, error) {
+	bdaddr := a.(net.HardwareAddr)
+
+	ch := make(chan *nameEvent)
+	defer func() {
+		h.nameHandlers.Lock()
+		close(ch)
+		delete(h.nameHandlers.handlers, a)
+		h.nameHandlers.Unlock()
+	}()
+
+	h.nameHandlers.Lock()
+	h.nameHandlers.handlers[a] = ch
+	h.nameHandlers.Unlock()
+
+	req := &cmd.RemoteNameRequest{
+		ClockOffset:          0x0000,
+		PageScanRepitionMode: 0x00}
+	copy(req.BDADDR[:], bdaddr)
+	h.Send(req, nil)
+
+	select {
+	case nameEvent := <-ch:
+		return nameEvent.name, nameEvent.err
+	case <-time.After(60 * time.Second):
+		return "", errors.New("Timed out waiting for remote name response")
+	}
 }
 
 func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8) (ble.RFCOMMClient, error) {
@@ -112,7 +147,7 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		// The connection has been established, the cancel command
 		// failed with ErrDisallowed.
 		if err == ErrDisallowed {
-			return rfcomm.NewClient(<-h.chMasterSPPConn), nil
+			return rfcomm.NewClient(<-h.chMasterSPPConn)
 		}
 		return nil, errors.Wrap(err, "cancel connection failed")
 	}
