@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"flag"
 	"fmt"
@@ -75,4 +76,4 @@ func chkErr(err error) {
 	default:
 		log.Fatalf(err.Error())
 	}
-}
+}*/

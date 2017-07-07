@@ -1,4 +1,4 @@
-package multiplexor
+package multiplexer
 
 const EA uint8 = 0x01
 

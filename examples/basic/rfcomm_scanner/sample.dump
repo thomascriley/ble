@@ -162,28 +162,37 @@
     L2CAP(d): cid 0x0040 len 4 [psm 0]
       0000: 0b 73 01 92                                       .s..
 
-// UIH FRAME (MSC - Modem Status Command)
+// UIH FRAME (MSC - Modem Status Command CR=1)
 < ACL data: handle 1 flags 0x00 dlen 12
     0000: 08 00 45 00 03 ef 09 e3  05 0b 8d 70              ..E........p
 
-// UIH FRAME (MSC - Model Status Response)
+// UIH FRAME (MSC - Model Status Response CR=1)
 > ACL data: handle 1 flags 0x02 dlen 12
     L2CAP(d): cid 0x0040 len 8 [psm 0]
       0000: 01 ef 09 e3 05 0b 0d aa                           ........
+
+// UIH FRAME (MSC - Modem Status Command CR=0)
 < ACL data: handle 1 flags 0x00 dlen 12
     0000: 08 00 45 00 03 ef 09 e1  05 0b 0d 70              ..E........p
 > HCI Event: Number of Completed Packets (0x13) plen 5
     handle 1 packets 1
 > HCI Event: Number of Completed Packets (0x13) plen 5
     handle 1 packets 1
+
+// UIH FRAME (MSC - Modem Status Response CR=0)
 > ACL data: handle 1 flags 0x02 dlen 12
     L2CAP(d): cid 0x0040 len 8 [psm 0]
       0000: 01 ef 09 e1 05 0b 8d aa                           ........
+
+// UIH FRAME (MSC - Test Command) Poll=0x01
 < ACL data: handle 1 flags 0x00 dlen 9
     0000: 05 00 45 00 0b ff 01 21  86                       ..E....!.
+
+// UIH FRAME (MSC - Test Response) Poll=0x01
 > ACL data: handle 1 flags 0x02 dlen 9
     L2CAP(d): cid 0x0040 len 5 [psm 0]
       0000: 09 ff 01 0f 5c                                    ....\
+
 > HCI Event: Number of Completed Packets (0x13) plen 5
     handle 1 packets 1
 > HCI Event: Role Change (0x12) plen 8

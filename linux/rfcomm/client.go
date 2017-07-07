@@ -1,13 +1,13 @@
 package rfcomm
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"time"
 
 	"github.com/currantlabs/ble"
-	"github.com/currantlabs/ble/linux/l2cap"
-	"github.com/currantlabs/ble/linux/multiplexor"
+	"github.com/currantlabs/ble/linux/multiplexer"
 	"github.com/pkg/errors"
 )
 
@@ -19,24 +19,6 @@ var (
 var (
 	serverChannelNumbers = newServerChannels()
 )
-
-// TODO: Added the following LMP Methods
-// TODO: Authentication Requested [Vol 2, Part F, 4.1]
-// TODO: Simple Pairing Message Sequence [Vol 2, Part F, 4.2]
-// TODO: Link Supervision Timeout Event may be triggered if supported [Vol 2, Part F, 4.3]
-// TODO: Set Connection Encryption [Vol 2, Part F, 4.4]
-// TODO: Change Connection Link Key [Vol 2, Part F, 4.5]
-// TODO: Change Connection Link Key With Encryption Pause and Resume [Vol 2, Part F, 4.6]
-// TODO: Master Link Key [Vol 2, Part F, 4.7]
-// TODO: Read Remote Supported Features [Vol 2, 4.8]
-// TODO: Read Remote Extended Features  (if supported) [Vol 2, 4.9]
-// TODO: Read Clock Offset [Vol 2, 4.10]
-// TODO: Role Switch on an Encrypted Link Using Encryption Pause and Resume [Vol 2, 4.11]
-// TODO: Refreshing Encryption Keys [Vol 2, 4.12]
-// TODO: Read Remote Version Information [Vol 2, 4.13]
-// TODO: QoS Setup [Vol 2, 4.14]
-// TODO: Switch Role [Vol 2, 4.15]
-// TODO: AMP Physical Link Creation and Disconnect [Vol 2, 4.16]
 
 // Client implementa an Attribute Protocol Client.
 type Client struct {
@@ -53,12 +35,12 @@ type Client struct {
 	priority     uint8
 	maxFrameSize uint16
 
-	serverChannel int
+	serverChannel uint8
 }
 
 // NewClient returns an RFCOMM Client that has been initialized according to the
 // RFCOMM specifications.
-func NewClient(l2c ble.Conn) *Client {
+func NewClient(l2c ble.Conn) (*Client, error) {
 	c := &Client{
 		l2c:     l2c,
 		p2p:     make(chan []byte),
@@ -66,60 +48,50 @@ func NewClient(l2c ble.Conn) *Client {
 		chTxBuf: make(chan []byte, 1),
 		rxBuf:   make([]byte, ble.MaxACLMTU),
 	}
-	go c.loop()
-
-	if err := c.l2c.InformationRequest(l2cap.InfoTypeConnectionlessMTU, timeout); err != nil {
+	c.Lock()
+	if err := c.connect(); err != nil {
+		c.sendDISC()
+		c.l2c.Close()
 		return nil, err
 	}
-	if err := c.l2c.InformationRequest(l2cap.InfoTypeExtendedFeatures, timeout); err != nil {
-		return nil, err
-	}
-	// 1.2 - 2.1 + EDR will return not supported
-	c.l2c.InformationRequest(l2cap.InfoTypeFixedChannels, timeout)
+	return c, nil
+}
 
-	if err := c.l2c.ConnectionRequest(psmRFCOMM, timeout); err != nil {
-		return nil, err
-	}
-
-	// Even if all default values are acceptable, a Configuration Request
-	// packet with no options shall be sent. [Vol 3, Part A, 4.4]
-	// TODO: make this non-static
-	options := []l2cap.Option{&l2cap.MTUOption{MTU: 0x03f5}}
-	if err := c.l2c.ConfigurationRequest(options, timeout); err != nil {
-		return nil, err
-	}
-
-	// first send a SABM frame and expect an UA frame. If rejected
+// Connect ...
+func (c *Client) connect() error {
+	// first send a SABM on DLCI (0) and expect an UA frame. If rejected
 	// device with send a DM frame
-	if err := c.sendSABM(); err != nil {
-		return nil, err
+	if err := c.sendSABM(c.serverChannel); err != nil {
+		return err
 	}
 
 	// add to list of connected RFCOMM devices
 	serverChannel, err := serverChannelNumbers.Add(c)
 	if err != nil {
-		c.CancelConnection()
+		return err
 	}
 	c.serverChannel = serverChannel
 
-	// send parameter negotiation
-	if err = c.sendPN(); err != nil {
-		return nil, err
+	// send parameter negotiation [optional]
+	if err = c.sendParameterNegotiation(Priority, MaxFrameSize); err != nil {
+		fmt.Printf("Error negotiating the rfcomm parameters: %s\n", err)
 	}
 
 	// send SABM on (DLCI X)
-	if err = c.sendSABM(); err != nil {
-		return nil, err
+	if err = c.sendSABM(c.serverChannel); err != nil {
+		return err
 	}
 
-	// LMP Authentication
-
-	// receive UA Frame on (DCLI X)
-
 	// MSC FRAME
+	if err = c.sendModemStatus(); err != nil {
+		return err
+	}
 
-	// Data on UIH Frame
-	return c
+	// Send connection test
+	if err := c.sendTest(0x08); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Address returns the address of the client.
@@ -148,7 +120,7 @@ func (c *Client) Read(b []byte) (int, error) {
 			return 0, errors.New("Invalid address byte")
 		}
 		controlField := p[1]
-		if int(controlField&uint8(ControlNumberUIH)) != ControlNumberUIH {
+		if controlField&ControlNumberUIH != ControlNumberUIH {
 			return 0, errors.New("Invalid control number")
 		}
 		// TODO: check that the length byte matches actual payload length
@@ -169,10 +141,10 @@ func (c *Client) Read(b []byte) (int, error) {
 func (c *Client) Write(v []byte) (int, error) {
 	return len(v), c.sendFrame(frame{
 		ControlNumber:      ControlNumberUIH,
-		CommmandResponse:   true,
-		DLCI:               false,
-		ServerNum:          c.serverChannel,
-		PollFinal:          false,
+		CommmandResponse:   0x01,
+		Direction:          0x00,
+		ServerChannel:      c.serverChannel,
+		PollFinal:          0x00,
 		Payload:            v,
 		FrameCheckSequence: 0x9a})
 }
@@ -194,7 +166,7 @@ func (c *Client) Disconnected() <-chan struct{} {
 
 func (c *Client) sendDISC() error {
 	defer serverChannelNumbers.Remove(c.serverChannel)
-	if err = c.sendDISCFrame(); err != nil {
+	if err := c.sendDISCFrame(); err != nil {
 		return err
 	}
 	select {
@@ -204,9 +176,9 @@ func (c *Client) sendDISC() error {
 	return nil
 }
 
-func (c *Client) sendSABM() error {
+func (c *Client) sendSABM(serverChan uint8) error {
 
-	if err := c.sendSABMFrame(); err != nil {
+	if err := c.sendSABMFrame(serverChan); err != nil {
 		return err
 	}
 
@@ -215,30 +187,23 @@ func (c *Client) sendSABM() error {
 		return err
 	}
 
+	// TODO: check for LMP Authentication
 	switch frm.ControlNumber {
 	case ControlNumberUA:
 	default:
-		c.sendDISC()
-		c.l2c.Close()
 		return errors.New("Received unexpected control number")
 	}
 	return nil
 }
 
-func (c *Client) sendParameterNegotiation() error {
+func (c *Client) sendParameterNegotiation(priority uint8, maxFrameSize uint16) error {
 
-	priority = 0x07
-	maxFrameSize = 0x03f0
-	commandResponse = 0x01
-	direction = 0x01
-
-	err := c.sendMultiplexorFrame(multiplexor.ParameterNegotiation{
-		CommandResponse:        commandResponse,
-		Direction:              direction,
-		ServerNumber:           c.serverNum,
+	err := c.sendMultiplexerFrame(&multiplexer.ParameterNegotiation{
+		CommandResponse:        0x01,
+		ServerChannel:          c.serverChannel,
 		FrameType:              FrameTypeUIH,
 		ConvergenceLayer:       ConvergenceLayer,
-		CreditBasedFrowControl: true,
+		CreditBasedFlowControl: true,
 		Priority:               priority,
 		Timer:                  Timer,
 		MaxSize:                maxFrameSize,
@@ -257,55 +222,166 @@ func (c *Client) sendParameterNegotiation() error {
 	// The response may have a smaller value for the maximum frame size, but it may not
 	// propose a larger value for this parameter [ pg. 183 ]
 
-	m, err := c.getMultiplexorFrame()
+	m, err := c.getMultiplexerFrame()
+	if err != nil {
+		return err
+	}
+
+	prm, ok := m.(*multiplexer.ParameterNegotiation)
+	if !ok {
+		return errors.New("Received unexpected multiplexer")
+	} else if c.serverChannel != prm.ServerChannel {
+		return errors.New("The device responded on a different server channel")
+	} else if priority != prm.Priority {
+		return errors.New("The device attempted to change the priority")
+	} else if maxFrameSize < prm.MaxSize {
+		return errors.New("The device is trying to use a max frame size greater than proposed")
+	}
+	c.priority = prm.Priority
+	c.maxFrameSize = prm.MaxSize
+
+	return nil
+}
+
+// sendTest ...
+func (c *Client) sendTest(data uint8) error {
+
+	err := c.sendMultiplexerFrame(&multiplexer.Test{
+		CommandResponse: 0x01,
+		Data:            data,
+	})
+	if err != nil {
+		return err
+	}
+
+	// The test command is used to check the RFCOMM connection. As is normal, the length byte
+	// gives the number of value bytes which follow. The number of value bytes is not
+	// fixed, and is used to hold a test pattern. The remote end of the link echoes
+	// the same value bytes back. [ pg. 184 ]
+
+	m, err := c.getMultiplexerFrame()
+	if err != nil {
+		return err
+	}
+
+	_, ok := m.(*multiplexer.Test)
+	if !ok {
+		return errors.New("Received unexpected multiplexer")
+	} // else if test.Data != data {
+	//	return errors.New("The device echoed back a data stream that does not match")
+	//}
+	return nil
+}
+
+// sendFlowControl Applies the flow control mechanism to all connections
+func (c *Client) sendFlowControl(on bool) error {
+	var m multiplexer.Multiplexer
+	if on {
+		m = &multiplexer.FlowControlOn{}
+	} else {
+		m = &multiplexer.FlowControlOff{}
+	}
+	m.SetCommandResponse(0x01)
+
+	if err := c.sendMultiplexerFrame(m); err != nil {
+		return err
+	}
+
+	m, err := c.getMultiplexerFrame()
 	if err != nil {
 		return err
 	}
 
 	switch m.(type) {
-	case multiplexor.ParameterNegotiation:
-		prm := m.(*multiplexor.ParameterNegotiation)
-		if c.serverNum != prm.ServerNumber {
-			return errors.New("The device attempted to change the DLCI")
-		} else if priority != prm.Priority {
-			return errors.New("The device attempted to change the priority")
-		} else if maxFrameSize < prm.MaxSize {
-			return errors.New("The device is trying to use a max frame size greater than proposed")
+	case *multiplexer.FlowControlOn:
+		if !on {
+			return errors.New("Responded with flow control on when sent an off type")
 		}
-		c.priority = prm.Priority
-		c.maxFrameSize = prm.MaxSize
+	case *multiplexer.FlowControlOff:
+		if !on {
+			return errors.New("Responded with flow control off when sent an on type")
+		}
 	default:
-		c.sendDISC()
-		c.l2c.Close()
-		return errors.New("Received unexpected multiplexor")
+		return errors.New("Received unexpected multiplexer")
 	}
 	return nil
 }
 
-// Multiplexor commands and responses are sent on DLCI = 0. The multiplexor commands
-// and responses are carried as messages inside an RFCOMM UIH frame as shown in
-// Figure 10–10. It is possible to send several multiplexor command messages in
-// one RFCOMM frame, or to split a multiplexor command message over more than one frame.
-// [pg. 181]
-func (c *Client) sendMultiplexorFrame(m multiplexor.Multiplexor) error {
-	b, err := m.MarshalBinary()
-	if err != nil {
-		return nil
+// sendModemStatus a flow control mechanism which can be applied to just one channel at
+// a time
+func (c *Client) sendModemStatus() error {
+	frm := &multiplexer.ModemStatus{
+		CommandResponse:    0x01,
+		ServerChannel:      c.serverChannel,
+		FlowControl:        FlowControl,
+		ReadyToCommunicate: ReadyToCommunicate,
+		ReadyToReceive:     ReadyToReceive,
+		IncomingCall:       IncomingCall,
+		DataValid:          ValidData,
 	}
-	return c.sendUIHFrame(0x00, 0x00, b)
+	if err := c.sendMultiplexerFrame(frm); err != nil {
+		return err
+	}
+
+	// Both the DTE and DCE uses this command to notify each other of the status of their own V.24 control signals.
+	m, err := c.getMultiplexerFrame()
+	if err != nil {
+		return err
+	}
+	ms, ok := m.(*multiplexer.ModemStatus)
+	if !ok {
+		return errors.New("Received unexpected multiplexer")
+	}
+
+	// acknowledge the remote's modem status
+	ms.CommandResponse = 0x00
+	if c.sendMultiplexerFrame(ms); err != nil {
+		return err
+	}
+
+	// get the acknowledgement from the remote
+	if m, err = c.getMultiplexerFrame(); err != nil {
+		return err
+	}
+	if _, ok = m.(*multiplexer.ModemStatus); !ok {
+		return errors.New("Received unexpected multiplexer")
+	}
+	return nil
 }
 
-func (c *Client) getMultiplexorFrame() (multiplexor.Multiplexor, error) {
+// multiplexer commands and responses are sent on DLCI = 0. The multiplexer commands
+// and responses are carried as messages inside an RFCOMM UIH frame as shown in
+// Figure 10–10. It is possible to send several multiplexer command messages in
+// one RFCOMM frame, or to split a multiplexer command message over more than one frame.
+// [pg. 181]
+func (c *Client) sendMultiplexerFrame(m multiplexer.Multiplexer) error {
+	b, err := m.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	if _, ok := m.(*multiplexer.Test); ok {
+		return c.sendUIHFrame(0x00, c.serverChannel, 0x01, b)
+	}
+	return c.sendUIHFrame(0x00, 0x00, 0x00, b)
+}
+
+func (c *Client) getMultiplexerFrame() (multiplexer.Multiplexer, error) {
 	frm, err := c.getFrame()
 	if err != nil {
 		return nil, err
 	}
-	if frm.ControlNumber == ControlNumberUIH {
-		return multiplexor.UnmarshalBinary(frm.Payload)
+	if frm.ControlNumber != ControlNumberUIH {
+		return nil, errors.New("Received unexpected control number")
 	}
-	c.sendDISC()
-	c.l2c.Close()
-	return errors.New("Received unexpected control number")
+	m, err := multiplexer.UnmarshalBinary(frm.Payload)
+	if err != nil {
+		return nil, err
+	}
+	switch m.(type) {
+	case *multiplexer.NotSupported:
+		return nil, errors.New("multiplexer is not supported by this device")
+	}
+	return m, nil
 }
 
 func (c *Client) sendSABMFrame(serverChannel uint8) error {
@@ -314,19 +390,18 @@ func (c *Client) sendSABMFrame(serverChannel uint8) error {
 		ServerChannel:      serverChannel,
 		ControlNumber:      ControlNumberSABM,
 		CommmandResponse:   0x01,
-		Direction:          0x01,
 		PollFinal:          0x01,
 		Payload:            []byte{},
 		FrameCheckSequence: 0x1c})
 }
 
-func (c *Client) sendUIHFrame(direction uint8, serverChannel uint8, data []byte) error {
+func (c *Client) sendUIHFrame(direction uint8, serverChannel uint8, pollFinal uint8, data []byte) error {
 	return c.sendFrame(frame{
 		Direction:          direction,
 		ServerChannel:      serverChannel,
 		ControlNumber:      ControlNumberUIH,
 		CommmandResponse:   0x01,
-		PollFinal:          0x01,
+		PollFinal:          pollFinal,
 		Payload:            data,
 		FrameCheckSequence: 0x70})
 }
@@ -337,7 +412,6 @@ func (c *Client) sendDISCFrame() error {
 		ServerChannel:      c.serverChannel,
 		ControlNumber:      ControlNumberDISC,
 		CommmandResponse:   0x01,
-		Direction:          0x01,
 		PollFinal:          0x01,
 		Payload:            []byte{},
 		FrameCheckSequence: 0x00})
@@ -371,10 +445,10 @@ func (c *Client) getFrame() (*frame, error) {
 			return nil, errors.New("Channel closed")
 		}
 		var frm *frame
-		if err = frm.Unmarshal(p); err != nil {
+		if err := frm.Unmarshal(p); err != nil {
 			return nil, err
 		}
-		switch int(frm.ControlNumber) {
+		switch frm.ControlNumber {
 		case ControlNumberDISC:
 			serverChannelNumbers.Remove(c.serverChannel)
 			c.l2c.Close()

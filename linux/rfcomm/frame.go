@@ -16,7 +16,7 @@ func (f *frame) Marshal(b []byte) (int, error) {
 	}
 
 	// Address [5.4]
-	ea := 0x01
+	var ea uint8 = 0x01
 	b[0] = ea&0x01 | f.CommmandResponse&0x01<<1 | f.Direction&0x01<<2 | f.ServerChannel&0x1F<<3
 
 	// control field
@@ -55,7 +55,7 @@ func (f *frame) Unmarshal(b []byte) error {
 
 	// Length
 	var length int
-	ea := b[2] & 0x01
+	var ea uint8 = b[2] & 0x01
 	if ea == 0x01 {
 		length = int(b[2] >> 1)
 	} else if len(b) < 4 {
@@ -67,7 +67,7 @@ func (f *frame) Unmarshal(b []byte) error {
 	// TODO: Process credit if PollFile = 0x01
 
 	// Payload
-	i := 3 + ea + f.PollFinal
+	var i int = 3 + int(ea) + int(f.PollFinal)
 	if len(b) <= i+length {
 		return ErrInvalidArgument
 	}

@@ -132,6 +132,15 @@ func Dial(ctx context.Context, a Addr) (Client, error) {
 	return defaultDevice.Dial(ctx, a)
 }
 
+// Dial ...
+func DialRFCOMM(ctx context.Context, a Addr) (RFCOMMClient, error) {
+	if defaultDevice == nil {
+		return nil, ErrDefaultDevice
+	}
+	defer untrap(trap(ctx))
+	return defaultDevice.DialRFCOMM(ctx, a)
+}
+
 // Connect searches for and connects to a Peripheral which matches specified condition.
 func Connect(ctx context.Context, f AdvFilter) (Client, error) {
 	ctx2, cancel := context.WithCancel(ctx)

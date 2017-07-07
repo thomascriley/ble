@@ -49,20 +49,21 @@ func inqHandler(i ble.Inquiry) {
 
 	if i.Address().String() == address.String() {
 		fmt.Printf("Found medtracker, dialing\n")
-		cli, err := ble.Dial(ctx,address)
+		cli, err := ble.DialRFCOMM(ctx, address)
 		if err != nil {
-			fmt.Printf("Error dialing: %s\n",err)
+			fmt.Printf("Error dialing: %s\n", err)
 			return
 		}
-		err = cli.Write([]byte("status\n"))
+		_, err = cli.Write([]byte("status\n"))
 		if err != nil {
-			fmt.Printf("Error writing: %s\n",err)
+			fmt.Printf("Error writing: %s\n", err)
 		}
-		bs, err := cli.Read()
+		bs := make([]byte, 1024)
+		n, err := cli.Read(bs)
 		if err != nil {
-			fmt.Printf("Error reading: %s\n",err)
+			fmt.Printf("Error reading: %s\n", err)
 		}
-		fmt.Printf("Read %s",bs)
+		fmt.Printf("Read %s", bs[:n])
 		cli.CancelConnection()
 	}
 }

@@ -1,11 +1,11 @@
-package multiplexor
+package multiplexer
 
 import (
 	"encoding"
 	"fmt"
 )
 
-type Multiplexor interface {
+type Multiplexer interface {
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 
@@ -13,47 +13,42 @@ type Multiplexor interface {
 	Len() uint8
 
 	GetCommandResponse() uint8
-	GetDirection() uint8
-	GetServerChannel() uint8
-
 	SetCommandResponse(l uint8)
-	SetDirection(l uint8)
-	SetServerChannel(l uint8)
 }
 
-func MarshalBinary(p Multiplexor) ([]byte, error) {
+func MarshalBinary(p Multiplexer) ([]byte, error) {
 	return p.MarshalBinary()
 }
 
-func UnmarshalBinary(data []byte) (Multiplexor, error) {
+func UnmarshalBinary(data []byte) (Multiplexer, error) {
 	if len(data) < HeaderSize {
 		return nil, fmt.Errorf("The byte buffer must be at least %d bytes long", HeaderSize)
 	}
-	var p Multiplexor
+	var p Multiplexer
 	switch data[0] >> 3 {
 	case TypeFlowControlOff:
-		//p = &FlowControlOff{}
+		p = &FlowControlOff{}
 	case TypeFlowControlOn:
-		//p = &FlowControlOn{}
+		p = &FlowControlOn{}
 	case TypeModemStatus:
 		p = &ModemStatus{}
 	case TypeNotSupported:
-		//p = &NotSupported{}
+		p = &NotSupported{}
 	case TypeParameterNegotiation:
 		p = &ParameterNegotiation{}
 	case TypeRemoteLineStatus:
-		//p = &RemoteLineStatus{}
+		p = &RemoteLineStatus{}
 	case TypeRemotePortNegotiation:
-		//p = &RemotePortNegotiation{}
+		p = &RemotePortNegotiation{}
 	case TypeTest:
-		//p = &Test{}
+		p = &Test{}
 	default:
 		return nil, fmt.Errorf("Unknown multiplexor type %X", data[0]>>3)
 	}
 	return p, p.UnmarshalBinary(data)
 }
 
-func marshal(p Multiplexor) ([]byte, error) {
+func marshal(p Multiplexer) ([]byte, error) {
 	b := make([]byte, HeaderSize+int(p.Len()))
 
 	// Parameter Negotiation Type
@@ -62,15 +57,11 @@ func marshal(p Multiplexor) ([]byte, error) {
 	// Length of the parameter values
 	b[1] = EA&0x01 | p.Len()<<1
 
-	// first 6 bits are DLCI, last two are padding
-	// DLCI is composed of a direction bit and a 5 bit server number 1 - 30
-	b[2] = p.GetDirection()&0x01 | p.GetServerChannel()&0x1F<<1
-
 	return b, nil
 }
 
-func unmarshal(p Multiplexor, b []byte) error {
-	if len(b) < HeaderSize+1 {
+func unmarshal(p Multiplexer, b []byte) error {
+	if len(b) < HeaderSize {
 		return fmt.Errorf("The byte buffer must be at least %d bytes long", 3)
 	}
 
@@ -78,8 +69,6 @@ func unmarshal(p Multiplexor, b []byte) error {
 		return fmt.Errorf("The multiplexor types do ")
 	}
 	p.SetCommandResponse(b[0] >> 1 & 0x01)
-	p.SetDirection(b[2] & 0x01)
-	p.SetServerChannel(b[2] >> 1 & 0x1F)
 
 	length := b[1] >> 1
 	if int(length)+HeaderSize > len(b) {

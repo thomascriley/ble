@@ -2,7 +2,6 @@ package darwin
 
 import (
 	"sync"
-	"time"
 
 	"golang.org/x/net/context"
 
@@ -84,15 +83,15 @@ func (c *conn) ReadSDU(b []byte) (bool, int, error) {
 	return false, 0, nil
 }
 
+func (c *conn) Read(b []byte) (n int, err error) {
+	return 0, nil
+}
+
 func (c *conn) Write(b []byte) (int, error) {
 	return 0, nil
 }
 
 func (c *conn) Close() error {
-	return nil
-}
-
-func (c *conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 	return nil
 }
 

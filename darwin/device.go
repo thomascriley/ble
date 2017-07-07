@@ -355,6 +355,11 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	}
 }
 
+// DialRFCOMM ...
+func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr) (ble.RFCOMMClient, error) {
+	return nil, errors.New("Not implemented")
+}
+
 // Stop ...
 func (d *Device) Stop() error {
 	return nil
