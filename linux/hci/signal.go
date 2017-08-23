@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/currantlabs/ble/linux/hci/cmd"
+	"github.com/currantlabs/ble/linux/hci/evt"
 	"github.com/currantlabs/ble/linux/l2cap"
 )
 
@@ -368,18 +369,21 @@ func (c *Conn) handleConnectionParameterUpdateRequest(s sigCmd) {
 		MinimumCELength:    0, // Informational, and spec doesn't specify the use.
 		MaximumCELength:    0, // Informational, and spec doesn't specify the use.
 	}, nil)
+}
 
+func (c *Conn) handleLEConnectionUpdateComplete(e evt.LEConnectionUpdateComplete) error {
 	// Currently, we (as a slave host) accept all the parameters and forward
 	// it to the controller. The controller might update all, partial or even
 	// none (ignore) of the parameters. The slave(remote) host will be indicated
 	// by its controller if the update actually happens.
 	// TODO: allow users to implement what parameters to accept.
-	c.sendResponse(
+	_, err := c.sendResponse(
 		l2cap.SignalConnectionParameterUpdateResponse,
-		s.id(),
+		c.sigID,
 		&l2cap.ConnectionParameterUpdateResponse{
 			Result: 0, // Accept.
 		})
+	return err
 }
 
 // LECreditBasedConnectionRequest ...

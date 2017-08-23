@@ -1,7 +1,7 @@
 package linux
 
 import (
-	"log" 
+	"log"
 	"time"
 
 	"github.com/pkg/errors"
@@ -170,11 +170,24 @@ func (d *Device) Inquire(ctx context.Context, numResponses int, h ble.InqHandler
 	return ctx.Err()
 }
 
+// RequestRemoteName ...
+func (d *Device) RequestRemoteName(a ble.Addr) (string, error) {
+	return d.HCI.RequestRemoteName(a)
+}
+
 // Dial ...
 func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	// d.HCI.Dial is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
 	cln, err := d.HCI.Dial(ctx, a)
+	return cln, errors.Wrap(err, "can't dial")
+}
+
+// DialRFCOMM ...
+func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8) (ble.RFCOMMClient, error) {
+	// d.HCI.DialRFCOMM is a blocking call, although most of time it should return immediately.
+	// But in case passing wrong device address or the device went non-connectable, it blocks.
+	cln, err := d.HCI.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode)
 	return cln, errors.Wrap(err, "can't dial")
 }
 

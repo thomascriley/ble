@@ -95,7 +95,7 @@ type HCI struct {
 	addr    net.HardwareAddr
 	txPwrLv int
 
-	// adHist and adLast track the history of past scannable advertising packets.
+	// adHist tracks the history of past scannable advertising packets.
 	// Controller delivers AD(Advertising Data) and SR(Scan Response) separately
 	// through HCI. Upon recieving an AD, no matter it's scannable or not, we
 	// pass a Advertisement (AD only) to advHandler immediately.
@@ -103,8 +103,7 @@ type HCI struct {
 	// device, and pass the Advertisement (AD+SR) to advHandler.
 	// The adHist and adLast are allocated in the Scan().
 	advHandler ble.AdvHandler
-	adHist     []*Advertisement
-	adLast     int
+	adHist     map[string]*Advertisement
 
 	// Inquiry scan handler
 	inqHandler ble.InqHandler
@@ -384,30 +383,17 @@ func (h *HCI) handleLEAdvertisingReport(b []byte) error {
 			fallthrough
 		case evtTypAdvScanInd:
 			a = newAdvertisement(e, i)
-			h.adHist[h.adLast] = a
-			h.adLast++
-			if h.adLast == len(h.adHist) {
-				h.adLast = 0
-			}
+			h.adHist[a.Address().String()] = a
 		case evtTypScanRsp:
+			//fmt.Println("Received scan response")
 			sr := newAdvertisement(e, i)
-			for idx := h.adLast - 1; idx != h.adLast; idx-- {
-				if idx == -1 {
-					idx = len(h.adHist) - 1
-				}
-				if h.adHist[idx] == nil {
-					break
-				}
-				if h.adHist[idx].Address().String() == sr.Address().String() {
-					h.adHist[idx].setScanResponse(sr)
-					a = h.adHist[idx]
-					break
-				}
-			}
+			a = h.adHist[sr.Address().String()]
+
 			// Got a SR without having recieved an associated AD before?
 			if a == nil {
 				return fmt.Errorf("recieved scan response %s with no associated Advertising Data packet", sr.Address())
 			}
+			a.setScanResponse(sr)
 		default:
 			a = newAdvertisement(e, i)
 		}
@@ -489,10 +475,16 @@ func (h *HCI) handleLEConnectionComplete(b []byte) error {
 }
 
 func (h *HCI) handleLEConnectionUpdateComplete(b []byte) error {
-	return nil
+	e := evt.LEConnectionUpdateComplete(b)
+	c, ok := h.conns[e.ConnectionHandle()]
+	if !ok {
+		return fmt.Errorf("le connection update complete has invalid connection handle %04X", e.ConnectionHandle())
+	}
+	return c.handleLEConnectionUpdateComplete(e)
 }
 
 func (h *HCI) handleDisconnectionComplete(b []byte) error {
+	fmt.Println("disconnect complete event")
 	e := evt.DisconnectionComplete(b)
 	h.muConns.Lock()
 	c, found := h.conns[e.ConnectionHandle()]
@@ -650,7 +642,7 @@ func (h *HCI) handleReadRemoteNameRequestCompleteEvent(b []byte) error {
 	defer h.nameHandlers.Unlock()
 	ch, ok := h.nameHandlers.handlers[ble.NewAddr(fmt.Sprintf("%X", e.BDADDR()))]
 	if !ok {
-		return fmt.Errorf("Received remote name request complete from unknown address: %X", e.BDADDR)
+		return fmt.Errorf("Received remote name request complete from unknown address: %X", e.BDADDR())
 	}
 	ch <- nameEvent
 	return nil

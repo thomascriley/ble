@@ -102,7 +102,7 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 		defaultMTU int
 	)
 
-	if _, ok := param.(*evt.LEConnectionComplete); ok {
+	if _, ok := param.(evt.LEConnectionComplete); ok {
 		sigCID = uint16(cidLESignal)
 		defaultMTU = ble.DefaultMTU
 	} else {

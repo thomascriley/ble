@@ -47,5 +47,5 @@ type Device interface {
 	Dial(ctx context.Context, a Addr) (Client, error)
 
 	// Dial
-	DialRFCOMM(ctx context.Context, a Addr) (RFCOMMClient, error)
+	DialRFCOMM(ctx context.Context, a Addr, clockOffset uint16, pageScanRepetitionMode uint8) (RFCOMMClient, error)
 }
