@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/currantlabs/ble/linux/hci/cmd"
+	"github.com/thomascriley/ble/linux/hci/cmd"
 )
 
 // Signal ...

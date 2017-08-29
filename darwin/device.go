@@ -11,7 +11,7 @@ import (
 	"github.com/raff/goble/xpc"
 	"golang.org/x/net/context"
 
-	"github.com/currantlabs/ble"
+	"github.com/thomascriley/ble"
 )
 
 const (

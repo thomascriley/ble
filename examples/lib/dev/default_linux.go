@@ -1,8 +1,8 @@
 package dev
 
 import (
-	"github.com/currantlabs/ble"
-	"github.com/currantlabs/ble/linux"
+	"github.com/thomascriley/ble"
+	"github.com/thomascriley/ble/linux"
 )
 
 // DefaultDevice ...
