@@ -127,13 +127,14 @@ func (s *Socket) Read(p []byte) (int, error) {
 	s.rmu.Lock()
 	defer s.rmu.Unlock()
 	n, err := unix.Read(s.fd, p)
+	//fmt.Printf("->%X\n", p[:n])
 	return n, errors.Wrap(err, "can't read hci socket")
 }
 
 func (s *Socket) Write(p []byte) (int, error) {
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
-	fmt.Printf("%X\n",p)
+	//fmt.Printf("<-%X\n", p)
 	n, err := unix.Write(s.fd, p)
 	return n, errors.Wrap(err, "can't write hci socket")
 }

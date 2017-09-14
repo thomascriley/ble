@@ -7,10 +7,10 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/currantlabs/ble"
-	"github.com/currantlabs/ble/linux/adv"
-	"github.com/currantlabs/ble/linux/gatt"
 	"github.com/pkg/errors"
+	"github.com/thomascriley/ble"
+	"github.com/thomascriley/ble/linux/adv"
+	"github.com/thomascriley/ble/linux/gatt"
 )
 
 // Addr ...

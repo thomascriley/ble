@@ -6,10 +6,10 @@ import (
 	"net"
 	"time"
 
-	"github.com/currantlabs/ble"
-	"github.com/currantlabs/ble/linux/hci/cmd"
-	"github.com/currantlabs/ble/linux/l2cap"
-	"github.com/currantlabs/ble/linux/rfcomm"
+	"github.com/thomascriley/ble"
+	"github.com/thomascriley/ble/linux/hci/cmd"
+	"github.com/thomascriley/ble/linux/l2cap"
+	"github.com/thomascriley/ble/linux/rfcomm"
 	"github.com/pkg/errors"
 )
 

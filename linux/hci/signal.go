@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/currantlabs/ble/linux/hci/cmd"
-	"github.com/currantlabs/ble/linux/hci/evt"
-	"github.com/currantlabs/ble/linux/l2cap"
+	"github.com/thomascriley/ble/linux/hci/cmd"
+	"github.com/thomascriley/ble/linux/hci/evt"
+	"github.com/thomascriley/ble/linux/l2cap"
 )
 
 // Signal ...

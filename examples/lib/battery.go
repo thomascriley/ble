@@ -1,6 +1,6 @@
 package lib
 
-import "github.com/currantlabs/ble"
+import "github.com/thomascriley/ble"
 
 // NewBatteryService ...
 func NewBatteryService() *ble.Service {

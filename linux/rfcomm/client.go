@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/currantlabs/ble"
-	"github.com/currantlabs/ble/linux/multiplexer"
+	"github.com/thomascriley/ble"
+	"github.com/thomascriley/ble/linux/multiplexer"
 	"github.com/pkg/errors"
 )
 

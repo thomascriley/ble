@@ -13,10 +13,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 
-	"github.com/currantlabs/ble"
-	"github.com/currantlabs/ble/examples/lib"
-	"github.com/currantlabs/ble/examples/lib/dev"
-	"github.com/currantlabs/ble/linux"
+	"github.com/thomascriley/ble"
+	"github.com/thomascriley/ble/examples/lib"
+	"github.com/thomascriley/ble/examples/lib/dev"
+	"github.com/thomascriley/ble/linux"
 )
 
 var curr struct {
