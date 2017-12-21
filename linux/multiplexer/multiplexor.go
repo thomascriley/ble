@@ -25,7 +25,7 @@ func UnmarshalBinary(data []byte) (Multiplexer, error) {
 		return nil, fmt.Errorf("The byte buffer must be at least %d bytes long", HeaderSize)
 	}
 	var p Multiplexer
-	switch data[0] >> 3 {
+	switch data[0] >> 2 {
 	case TypeFlowControlOff:
 		p = &FlowControlOff{}
 	case TypeFlowControlOn:
@@ -43,7 +43,7 @@ func UnmarshalBinary(data []byte) (Multiplexer, error) {
 	case TypeTest:
 		p = &Test{}
 	default:
-		return nil, fmt.Errorf("Unknown multiplexor type %X", data[0]>>3)
+		return nil, fmt.Errorf("Unknown multiplexer type %X", data[0]>>3)
 	}
 	return p, p.UnmarshalBinary(data)
 }
@@ -52,7 +52,7 @@ func marshal(p Multiplexer) ([]byte, error) {
 	b := make([]byte, HeaderSize+int(p.Len()))
 
 	// Parameter Negotiation Type
-	b[0] = EA&0x01 | p.GetCommandResponse()&0x01<<1 | p.Type()<<3
+	b[0] = (EA & 0x01) | (p.GetCommandResponse() & 0x01 << 1) | (p.Type() << 2)
 
 	// Length of the parameter values
 	b[1] = EA&0x01 | p.Len()<<1
@@ -65,8 +65,8 @@ func unmarshal(p Multiplexer, b []byte) error {
 		return fmt.Errorf("The byte buffer must be at least %d bytes long", 3)
 	}
 
-	if p.Type() != b[0]>>3 {
-		return fmt.Errorf("The multiplexor types do ")
+	if p.Type() != b[0]>>2 {
+		return fmt.Errorf("The multiplexer types do not match %X != %X (%X)", p.Type(), b[0]>>2, b[0])
 	}
 	p.SetCommandResponse(b[0] >> 1 & 0x01)
 

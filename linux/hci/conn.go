@@ -9,10 +9,11 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/pkg/errors"
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/hci/cmd"
 	"github.com/thomascriley/ble/linux/hci/evt"
-	"github.com/pkg/errors"
+	"github.com/thomascriley/ble/linux/smp"
 )
 
 type ConnectionCompleteEvent interface {
@@ -80,6 +81,10 @@ type Conn struct {
 	sigSent chan []byte
 	smpSent chan []byte
 
+	// cfgRequest closes when the RFCOMM connection responds to a configuration
+	// request
+	cfgRequest chan struct{}
+
 	chInPkt chan packet
 	chInPDU chan pdu
 
@@ -92,6 +97,20 @@ type Conn struct {
 
 	// fixedChannels BR/EDR/LE supported fixed channels as determined by a signaling request
 	fixedChannels uint64
+
+	// set of agreed upon parameters to use for the pairing process
+	smpPairingResp *smp.PairingResponse
+	smpPairingReq  *smp.PairingRequest
+
+	// smpInitiator if this device initiated the pairing process
+	smpInitiator bool
+
+	// Confirm and Random values for function c1 used during the LE Legacy Pairing Phase 2
+	// store both the Slave and Master versions
+	smpMConfirm [16]byte
+	smpMRand    [16]byte
+	smpSConfirm [16]byte
+	smpSRand    [16]byte
 
 	chDone chan struct{}
 }
@@ -123,6 +142,8 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 		sigCID:   sigCID,
 		sigRxMTU: defaultMTU,
 		sigTxMTU: defaultMTU,
+
+		cfgRequest: make(chan struct{}),
 
 		chInPkt: make(chan packet, 16),
 		chInPDU: make(chan pdu, 16),
@@ -201,7 +222,7 @@ func (c *Conn) Write(sdu []byte) (int, error) {
 	}
 	b := make([]byte, 4+plen)
 	binary.LittleEndian.PutUint16(b[0:2], uint16(len(sdu)))
-	binary.LittleEndian.PutUint16(b[2:4], c.SourceID)
+	binary.LittleEndian.PutUint16(b[2:4], c.DestinationID)
 	if c.leFrame {
 		binary.LittleEndian.PutUint16(b[4:6], uint16(len(sdu)))
 		copy(b[6:], sdu)
@@ -305,6 +326,7 @@ func (c *Conn) recombine() error {
 		p = append(p, pdu(pkt.data())...)
 	}
 
+	fmt.Printf("Received connect packet with CID: %d\n", p.cid())
 	cid := p.cid()
 	switch {
 	case cid == cidSignal:

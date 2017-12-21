@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thomascriley/ble"
 	"github.com/pkg/errors"
+	"github.com/thomascriley/ble"
 )
 
 // NotificationHandler handles notification or indication.
@@ -37,6 +37,10 @@ func NewClient(l2c ble.Conn, h NotificationHandler) *Client {
 	}
 	c.chTxBuf <- make([]byte, l2c.TxMTU(), l2c.TxMTU())
 	return c
+}
+
+func (c *Client) Connection() ble.Conn {
+	return c.l2c
 }
 
 // ExchangeMTU informs the server of the client’s maximum receive MTU size and

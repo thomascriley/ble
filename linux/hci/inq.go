@@ -30,13 +30,13 @@ type Inquiry struct {
 }
 
 // PageScanRepetitionMode returns the mode used for page scans
-func (i *Inquiry) PageScanRepetitionMode() int {
-	return int(i.e.PageScanRepetitionMode(i.i))
+func (i *Inquiry) PageScanRepetitionMode() uint8 {
+	return i.e.PageScanRepetitionMode(i.i)
 }
 
 // ClockOffset returns the difference in time between the host and client
-func (i *Inquiry) ClockOffset() int {
-	return int(i.e.ClockOffset(i.i))
+func (i *Inquiry) ClockOffset() uint16 {
+	return i.e.ClockOffset(i.i)
 }
 
 // ClassOfDevice returns a bit mask as defined here: https://www.bluetooth.com/specifications/assigned-numbers/baseband

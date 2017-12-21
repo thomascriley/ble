@@ -6,11 +6,11 @@ import (
 	"net"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/hci/cmd"
 	"github.com/thomascriley/ble/linux/l2cap"
 	"github.com/thomascriley/ble/linux/rfcomm"
-	"github.com/pkg/errors"
 )
 
 type nameEvent struct {
@@ -85,6 +85,7 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 	h.params.connBREDRParams.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
 	h.params.connBREDRParams.ClockOffset = clockOffset
 	h.params.connBREDRParams.PageScanRepetitionMode = pageScanRepetitionMode
+	h.params.connBREDRParams.AllowRoleSwitch = roleMaster
 	err = h.Send(&h.params.connBREDRParams, nil)
 	h.params.Unlock()
 
@@ -102,6 +103,8 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 	case <-h.done:
 		return nil, h.err
 	case c := <-h.chMasterSPPConn:
+
+		fmt.Printf("Received new bredr connection\n")
 		// increment to the next available dynamicCID channel id
 		c.SourceID = h.dynamicCID
 		if h.dynamicCID == 0xFFFF {
@@ -112,15 +115,20 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 
 		timeout := time.Duration(15 * time.Second)
 
+		fmt.Printf("Making connectionless mtu request\n")
 		if err = c.InformationRequest(l2cap.InfoTypeConnectionlessMTU, timeout); err != nil {
 			return nil, err
 		}
+		fmt.Printf("Making info type extended features request\n")
 		if err = c.InformationRequest(l2cap.InfoTypeExtendedFeatures, timeout); err != nil {
 			return nil, err
 		}
+		fmt.Printf("Making info type fixed channels request\n")
+
 		// 1.2 - 2.1 + EDR will return not supported
 		c.InformationRequest(l2cap.InfoTypeFixedChannels, timeout)
 
+		fmt.Printf("Signalling connection request\n")
 		if err = c.ConnectionRequest(psmRFCOMM, timeout); err != nil {
 			return nil, err
 		}
@@ -128,12 +136,21 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		// Even if all default values are acceptable, a Configuration Request
 		// packet with no options shall be sent. [Vol 3, Part A, 4.4]
 		// TODO: make this non-static
-		options := []l2cap.Option{&l2cap.MTUOption{MTU: 0x03f5}}
-		if err = c.ConfigurationRequest(options, timeout); err != nil {
+		fmt.Printf("Making configuration request\n")
+		mtuOption := &l2cap.MTUOption{MTU: 0x03f5}
+		//mtuOption.SetHint(0x01)
+		if err = c.ConfigurationRequest([]l2cap.Option{mtuOption}, timeout); err != nil {
 			return nil, err
 		}
 
-		return rfcomm.NewClient(c)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-c.cfgRequest:
+		}
+
+		fmt.Printf("Returning new client\n")
+		return rfcomm.NewClient(ctx, c)
 	case <-tmo:
 		h.params.Lock()
 		h.params.connCancelBREDR.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
@@ -147,7 +164,7 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		// The connection has been established, the cancel command
 		// failed with ErrDisallowed.
 		if err == ErrDisallowed {
-			return rfcomm.NewClient(<-h.chMasterSPPConn)
+			return rfcomm.NewClient(ctx, <-h.chMasterSPPConn)
 		}
 		return nil, errors.Wrap(err, "cancel connection failed")
 	}

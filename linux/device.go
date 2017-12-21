@@ -62,8 +62,11 @@ func NewDevice() (*Device, error) {
 
 // Device ...
 type Device struct {
-	HCI    *hci.HCI
-	Server *gatt.Server
+	HCI        *hci.HCI
+	Server     *gatt.Server
+	scanCtx    context.Context
+	scanCancel context.CancelFunc
+	allowDup   bool
 }
 
 // AddService adds a service to database.
@@ -147,7 +150,10 @@ func (d *Device) Scan(ctx context.Context, allowDup bool, h ble.AdvHandler) erro
 	if err := d.HCI.Scan(allowDup); err != nil {
 		return err
 	}
-	<-ctx.Done()
+	d.allowDup = allowDup
+	d.scanCtx, d.scanCancel = context.WithCancel(ctx)
+	defer d.scanCancel()
+	<-d.scanCtx.Done()
 	d.HCI.StopScanning()
 	return ctx.Err()
 }
@@ -179,7 +185,24 @@ func (d *Device) RequestRemoteName(a ble.Addr) (string, error) {
 func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	// d.HCI.Dial is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
+	// stopping the scan will improve ability to connect
+	if d.scanCtx != nil {
+		select {
+		case <-d.scanCtx.Done():
+		default:
+			d.HCI.StopScanning()
+		}
+	}
 	cln, err := d.HCI.Dial(ctx, a)
+	if d.scanCtx != nil {
+		select {
+		case <-d.scanCtx.Done():
+		default:
+			if err = d.HCI.Scan(d.allowDup); err != nil {
+				d.scanCancel()
+			}
+		}
+	}
 	return cln, errors.Wrap(err, "can't dial")
 }
 

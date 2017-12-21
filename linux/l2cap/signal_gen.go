@@ -220,7 +220,6 @@ const SignalInformationResponse = 0x0B
 type InformationResponse struct {
 	InfoType            uint16
 	Result              uint16
-	Data                []byte
 	ConnectionlessMTU   uint16
 	ExtendedFeatureMask uint32
 	FixedChannels       uint64

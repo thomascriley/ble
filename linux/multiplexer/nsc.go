@@ -17,7 +17,7 @@ func (m *NotSupported) MarshalBinary() ([]byte, error) {
 	}
 	i := HeaderSize
 
-	b[i+1] = 0x01 | m.NSCommandResponse&0x01<<1 | m.CommandType&0x3F<<2
+	b[i] = 0x01 | m.NSCommandResponse&0x01<<1 | m.CommandType&0x3F<<2
 
 	return b, nil
 }
@@ -29,8 +29,8 @@ func (m *NotSupported) UnmarshalBinary(b []byte) error {
 	}
 	i := HeaderSize
 
-	m.NSCommandResponse = b[i+1] >> 1 & 0x01
-	m.CommandType = b[i+1] >> 2 & 0x3F
+	m.NSCommandResponse = b[i] >> 1 & 0x01
+	m.CommandType = b[i] >> 2 & 0x3F
 
 	return nil
 }

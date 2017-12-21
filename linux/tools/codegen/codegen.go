@@ -279,6 +279,33 @@ func genEvt(b []byte, w io.Writer, t *template.Template) {
 	}
 }
 
+// Pair Packet format
+type pair struct {
+	Name                string
+	Spec                string
+	Code                string
+	Fields              []field
+	DefaultUnmarshaller bool
+	AuthReq             bool
+	KeyDist             bool
+}
+
+type pairs struct {
+	Pairing []pair
+}
+
+func genPair(b []byte, w io.Writer, t *template.Template) {
+	var pairs pairs
+	if err := json.Unmarshal(b, &pairs); err != nil {
+		log.Printf("failed to read spec.json, err: %s", err)
+	}
+	for _, p := range pairs.Pairing {
+		if err := t.Execute(w, p); err != nil {
+			log.Fatalf("execution: %s", err)
+		}
+	}
+}
+
 // Signal Packet format
 type signal struct {
 	Name                string
@@ -382,6 +409,13 @@ func main() {
 			log.Fatalf("parsing: %s", err)
 		}
 		genSignal(b, w, t)
+	case "pair":
+		fmt.Fprintf(w, "package smp\n")
+		t, err := template.New(*tmpl).Funcs(funcMap).Parse(string(input("pair.tmpl")))
+		if err != nil {
+			log.Fatalf("parsing: %s", err)
+		}
+		genPair(b, w, t)
 	case "option":
 		fmt.Fprintf(w, "package l2cap\n")
 		t, err := template.New(*tmpl).Funcs(funcMap).Parse(string(input("option.tmpl")))

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding"
 	"encoding/binary"
-	"io"
 )
 
 type Option interface {
@@ -17,16 +16,27 @@ type Option interface {
 	SetHint(hint uint8)
 }
 
-func marshal(o Option, b []byte) error {
-	buf := bytes.NewBuffer(b)
-	buf.Reset()
-	if buf.Cap() < int(o.Len()) {
-		return io.ErrShortBuffer
-	}
-	return binary.Write(buf, binary.LittleEndian, o)
+func optionTypeFromTypeHint(b uint8) uint8 {
+	return b & 0x7F
 }
 
-func unmarshal(o Option, b []byte) error {
+func optionHintFromTypeHint(b uint8) uint8 {
+	return (b >> 7 & 0x01)
+}
+
+func marshalBinary(o Option) ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0, o.Len()+2))
+	if err := binary.Write(buf, binary.LittleEndian, o); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func unmarshalBinary(o Option, b []byte) error {
 	buf := bytes.NewBuffer(b)
-	return binary.Read(buf, binary.LittleEndian, o)
+	if err := binary.Read(buf, binary.LittleEndian, o); err != nil {
+		return err
+	}
+	copy(b, buf.Bytes())
+	return nil
 }

@@ -1,6 +1,6 @@
 package multiplexer
 
-const ModemStatusLength uint8 = 1
+const ModemStatusLength uint8 = 2
 
 // ModemStatus It is desired to convey virtual V.24 control signals to a data stream, this is done by sending the MSC command. The
 // MSC command has one mandatory control signal byte and an optional break signal byte. This command is only relevant
@@ -28,7 +28,13 @@ func (m *ModemStatus) MarshalBinary() ([]byte, error) {
 	}
 	i := HeaderSize
 
-	b[i] = 0x01 | 0x01<<1 | 0x01<<2 | m.ServerChannel&0x1F<<3
+	var (
+		ea          uint8 = 0x01
+		direction   uint8 = 0x00
+		onesPadding uint8 = 0x01
+	)
+
+	b[i] = ea | (onesPadding << 1) | (direction << 2) | (m.ServerChannel&0x1F)<<3
 	b[i+1] = 0x01
 	b[i+1] = b[i+1] | m.FlowControl&0x01<<1
 	b[i+1] = b[i+1] | m.ReadyToCommunicate&0x01<<2
@@ -47,10 +53,10 @@ func (m *ModemStatus) UnmarshalBinary(b []byte) error {
 
 	m.ServerChannel = b[i] >> 3 & 0x1F
 	m.FlowControl = b[i+1] >> 1 & 0x01
-	m.ReadyToCommunicate = b[i+1] >> 1 & 0x01
-	m.ReadyToReceive = b[i+1] >> 1 & 0x01
-	m.IncomingCall = b[i+1] >> 1 & 0x01
-	m.DataValid = b[i+1] >> 1 & 0x01
+	m.ReadyToCommunicate = b[i+1] >> 2 & 0x01
+	m.ReadyToReceive = b[i+1] >> 3 & 0x01
+	m.IncomingCall = b[i+1] >> 6 & 0x01
+	m.DataValid = b[i+1] >> 7 & 0x01
 	return nil
 }
 

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/thomascriley/ble"
 	"github.com/raff/goble/xpc"
+	"github.com/thomascriley/ble"
 )
 
 // A Client is a GATT client.
@@ -39,6 +39,10 @@ func (cln *Client) Name() string {
 // Profile returns the discovered profile.
 func (cln *Client) Profile() *ble.Profile {
 	return cln.profile
+}
+
+func (cln *Client) Connection() ble.Conn {
+	return cln.conn
 }
 
 // DiscoverProfile discovers the whole hierachy of a server.
@@ -77,13 +81,15 @@ func (cln *Client) DiscoverServices(ss []ble.UUID) ([]*ble.Service, error) {
 		return nil, rsp.err()
 	}
 	svcs := []*ble.Service{}
-	for _, xss := range rsp.services() {
-		xs := msg(xss.(xpc.Dict))
-		svcs = append(svcs, &ble.Service{
-			UUID:      ble.MustParse(xs.uuid()),
-			Handle:    uint16(xs.serviceStartHandle()),
-			EndHandle: uint16(xs.serviceEndHandle()),
-		})
+	if s := rsp.services(); s != nil {
+		for _, xss := range s {
+			xs := msg(xss.(xpc.Dict))
+			svcs = append(svcs, &ble.Service{
+				UUID:      ble.MustParse(xs.uuid()),
+				Handle:    uint16(xs.serviceStartHandle()),
+				EndHandle: uint16(xs.serviceEndHandle()),
+			})
+		}
 	}
 	if cln.profile == nil {
 		cln.profile = &ble.Profile{Services: svcs}

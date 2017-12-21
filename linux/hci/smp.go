@@ -4,24 +4,17 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+
+	"github.com/thomascriley/ble/linux/hci/evt"
+	"github.com/thomascriley/ble/linux/smp"
 )
 
-const (
-	pairingRequest           = 0x01 // Pairing Request LE-U, ACL-U
-	pairingResponse          = 0x02 // Pairing Response LE-U, ACL-U
-	pairingConfirm           = 0x03 // Pairing Confirm LE-U
-	pairingRandom            = 0x04 // Pairing Random LE-U
-	pairingFailed            = 0x05 // Pairing Failed LE-U, ACL-U
-	encryptionInformation    = 0x06 // Encryption Information LE-U
-	masterIdentification     = 0x07 // Master Identification LE-U
-	identiInformation        = 0x08 // Identity Information LE-U, ACL-U
-	identityAddreInformation = 0x09 // Identity Address Information LE-U, ACL-U
-	signingInformation       = 0x0A // Signing Information LE-U, ACL-U
-	securityRequest          = 0x0B // Security Request LE-U
-	pairingPublicKey         = 0x0C // Pairing Public Key LE-U
-	pairingDHKeyCheck        = 0x0D // Pairing DHKey Check LE-U
-	pairingKeypress          = 0x0E // Pairing Keypress Notification LE-U
-)
+// SMP ...
+type SMP interface {
+	Code() int
+	Marshal() []byte
+	Unmarshal([]byte) error
+}
 
 func (c *Conn) sendSMP(p pdu) error {
 	buf := bytes.NewBuffer(make([]byte, 0))
@@ -36,26 +29,179 @@ func (c *Conn) sendSMP(p pdu) error {
 func (c *Conn) handleSMP(p pdu) error {
 	logger.Debug("smp", "recv", fmt.Sprintf("[%X]", p))
 	code := p[0]
+	//	payload := p[1:]
+	/*
+		var (
+			resp SMP
+			err  error
+		)
+	*/
 	switch code {
-	case pairingRequest:
-	case pairingResponse:
-	case pairingConfirm:
-	case pairingRandom:
-	case pairingFailed:
-	case encryptionInformation:
-	case masterIdentification:
-	case identiInformation:
-	case identityAddreInformation:
-	case signingInformation:
-	case securityRequest:
-	case pairingPublicKey:
-	case pairingDHKeyCheck:
-	case pairingKeypress:
+	/*case smp.SecurityRequestCode:
+		c.smpPairingReq = c.hci.smpCapabilites.PairingRequest()
+		resp = c.smpPairingReq
+	case smp.PairingRequestCode:
+		c.smpPairingReq = &smp.PairingRequest{}
+		if err = c.smpPairingReq.Unmarshal(payload); err == nil {
+			resp, err = c.handlePairingRequest(c.smpPairingReq)
+		}
+	case smp.PairingResponseCode:
+		c.smpPairingResp = &smp.PairingResponse{}
+		if err = c.smpPairingResp.Unmarshal(p[1:]); err == nil {
+			resp, err = c.handlePairingResponse(c.smpPairingResp)
+		}
+	case smp.PairingConfirmCode:
+		confirm := &smp.PairingConfirm{}
+		if err = confirm.Unmarshal(p[1:]); err == nil {
+			resp, err = c.handlePairingConfirm(confirm)
+		}
+	case smp.PairingRandomCode:
+		rand := &smp.PairingRandom{}
+		if err := rand.Unmarshal(p[1:]); err != nil {
+			return err
+		}
+
+		var r [16]byte
+		if c.smpInitiator {
+			copy(c.smpSRand[:], rand.RandomValue)
+			r = c.smpSRand
+		} else {
+			copy(c.smpMRand[:], rand.RandomValue)
+			r = c.smpMRand
+		}
+
+		confirm, err := c.generateConfirmKey(r)
+		if err != nil {
+			return err
+		}
+
+		// if slave calculate confirm value and check if it matches master
+		check := c.smpMConfirm
+		if c.smpInitiator {
+			check = c.smpSConfirm
+		}
+		if !bytes.Equal(confirm[:], check[:]) {
+			resp = &smp.PairingFailed{Reason: smp.ReasonConfirmValueFailed}
+		}
+		if !c.smpInitiator {
+			resp = &smp.PairingRandom{RandomValue: c.smpSRand[:]}
+		}
+
+		c.ShortTermKey, err = &smp.S1(tk, c.smpSRand, c.smpMRand)
+		if err != nil {
+			return err
+		}
+
+		// generate IV and SKD
+
+		// send LL_ENC_REQ
+
+		// get LL_ENC_RSP
+
+		//
+
+	case smp.PairingFailedCode:
+		fail := &smp.PairingFailed{}
+		if err = fail.Unmarshal(p[1:]); err != nil {
+			return err
+		}
+		return fmt.Errorf("Pairing failed: %X", fail.Reason)*/
+	case smp.PairingConfirmCode, smp.PairingFailedCode, smp.PairingRandomCode, smp.PairingResponseCode, smp.PairingRequestCode, smp.SecurityRequestCode:
+	case smp.EncryptionInformationCode:
+	case smp.MasterIdentificationCode:
+	case smp.IdentityIdentificationCode:
+	case smp.IdentityAddressIdentificationCode:
+	case smp.SigningInformationCode:
+
+	case smp.PairingPublicKeyCode:
+	case smp.PairingDHKeyCheckCode:
+	case smp.KeypressNotificationCode:
 	default:
 		// If a packet is received with a reserved Code it shall be ignored. [Vol 3, Part H, 3.3]
 		return nil
 	}
+
 	// FIXME: work aound to the lack of SMP implementation - always return non-supported.
 	// C.5.1 Pairing Not Supported by Slave
-	return c.sendSMP([]byte{pairingFailed, 0x05})
+	/*if err != nil {
+		resp = &smp.PairingFailed{Reason: smp.ReasonUnspecifiedReason}
+	}
+	if resp == nil {*/
+	resp := &smp.PairingFailed{Reason: smp.ReasonPairingNotSupported}
+	//}
+	return c.sendSMP(resp.Marshal())
+}
+
+func (c *Conn) handlePairingRequest(req *smp.PairingRequest) (resp SMP, err error) {
+	c.smpInitiator = false
+	c.smpSRand = smp.GenerateRand()
+	if c.smpSConfirm, err = c.generateConfirmKey(c.smpSRand); err != nil {
+		return nil, err
+	}
+	c.smpPairingResp = c.hci.smpCapabilites.PairingResponse(req)
+	return c.smpPairingResp, nil
+}
+
+func (c *Conn) handlePairingResponse(presp *smp.PairingResponse) (resp SMP, err error) {
+	c.smpInitiator = true
+	c.smpMRand = smp.GenerateRand()
+	if c.smpMConfirm, err = c.generateConfirmKey(c.smpMRand); err != nil {
+		return nil, err
+	}
+	return &smp.PairingConfirm{ConfirmValue: c.smpMConfirm[:]}, nil
+}
+
+func (c *Conn) handlePairingConfirm(confirm *smp.PairingConfirm) (resp SMP, err error) {
+	if !c.smpInitiator {
+		copy(c.smpMConfirm[:], confirm.ConfirmValue)
+		return &smp.PairingConfirm{ConfirmValue: c.smpSConfirm[:]}, nil
+	}
+	copy(c.smpSConfirm[:], confirm.ConfirmValue)
+	return &smp.PairingRandom{RandomValue: c.smpMRand[:]}, nil
+}
+
+func (c *Conn) generateConfirmKey(rand [16]byte) ([16]byte, error) {
+	method := smp.KeyGenMethodToUse(c.smpPairingReq, c.smpPairingResp, c.smpInitiator)
+
+	tk, err := c.hci.smpCapabilites.GetTemporaryKey(method, c.smpInitiator)
+	if err != nil {
+		return tk, err
+	}
+
+	return smp.C1(tk, rand, c.smpPairingResp, c.smpPairingReq, c.iat(), c.ia(), c.rat(), c.ra())
+}
+
+func (c *Conn) ia() (addr [6]byte) {
+	if c.smpInitiator {
+		copy(addr[:], []byte(c.hci.addr))
+	}
+	return c.param.PeerAddress()
+}
+
+func (c *Conn) iat() byte {
+	if c.smpInitiator {
+		return c.hci.params.connParams.OwnAddressType
+	}
+	if prm, ok := c.param.(evt.LEConnectionComplete); ok {
+		return prm.PeerAddressType()
+	}
+	return 0x00
+}
+
+func (c *Conn) ra() (addr [6]byte) {
+	if c.smpInitiator {
+		return c.param.PeerAddress()
+	}
+	copy(addr[:], []byte(c.hci.addr))
+	return
+}
+
+func (c *Conn) rat() byte {
+	if c.smpInitiator {
+		if prm, ok := c.param.(evt.LEConnectionComplete); ok {
+			return prm.PeerAddressType()
+		}
+		return 0x00
+	}
+	return c.hci.params.connParams.OwnAddressType
 }

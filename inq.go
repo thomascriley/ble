@@ -7,11 +7,11 @@ type InqHandler func(i Inquiry)
 type Inquiry interface {
 	Address() Addr
 
-	PageScanRepetitionMode() int
+	PageScanRepetitionMode() uint8
 
 	ClassOfDevice() [3]byte
 
-	ClockOffset() int
+	ClockOffset() uint16
 
 	RSSI() int
 

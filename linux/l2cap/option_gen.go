@@ -5,8 +5,9 @@ const MTUOptionType = 0x01
 
 // MTUOption implements MTU (0x01) [Vol 3, Part A, 5.1].
 type MTUOption struct {
-	hint uint8
-	MTU  uint16
+	TypeHint uint8
+	Length   uint8
+	MTU      uint16
 }
 
 // Type ...
@@ -16,26 +17,21 @@ func (o *MTUOption) Type() uint8 { return 0x01 }
 func (o *MTUOption) Len() uint8 { return 0x02 }
 
 // Hint returns if a bad value should cause the connection to fail
-func (o *MTUOption) Hint() uint8 { return o.hint }
+func (o *MTUOption) Hint() uint8 { return optionHintFromTypeHint(o.TypeHint) }
 
 // SetHint sets the Hint value based off of the MSB of the Type
-func (o *MTUOption) SetHint(hint uint8) { o.hint = hint }
+func (o *MTUOption) SetHint(hint uint8) { o.TypeHint = 0x01&0x7F | hint&0x01<<7 }
 
 // Marshal serializes the command parameters into binary form.
 func (o *MTUOption) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 0, o.Len())
-	if err := marshal(o, b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	o.TypeHint = o.TypeHint | (0x01 & 0x7F)
+	o.Length = 0x02
+	return marshalBinary(o)
 }
 
 // Unmarshal de-serializes the binary data and stores the result in the receiver.
 func (o *MTUOption) UnmarshalBinary(b []byte) error {
-	if err := unmarshal(o, b); err != nil {
-		return err
-	}
-	return nil
+	return unmarshalBinary(o, b)
 }
 
 // FlushTimeoutType is the option type of Flush Timeout configuration option.
@@ -43,7 +39,8 @@ const FlushTimeoutOptionType = 0x02
 
 // FlushTimeoutOption implements Flush Timeout (0x02) [Vol 3, Part A, 5.2].
 type FlushTimeoutOption struct {
-	hint         uint8
+	TypeHint     uint8
+	Length       uint8
 	FlushTimeout uint16
 }
 
@@ -54,26 +51,21 @@ func (o *FlushTimeoutOption) Type() uint8 { return 0x02 }
 func (o *FlushTimeoutOption) Len() uint8 { return 0x02 }
 
 // Hint returns if a bad value should cause the connection to fail
-func (o *FlushTimeoutOption) Hint() uint8 { return o.hint }
+func (o *FlushTimeoutOption) Hint() uint8 { return optionHintFromTypeHint(o.TypeHint) }
 
 // SetHint sets the Hint value based off of the MSB of the Type
-func (o *FlushTimeoutOption) SetHint(hint uint8) { o.hint = hint }
+func (o *FlushTimeoutOption) SetHint(hint uint8) { o.TypeHint = 0x02&0x7F | hint&0x01<<7 }
 
 // Marshal serializes the command parameters into binary form.
 func (o *FlushTimeoutOption) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 0, o.Len())
-	if err := marshal(o, b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	o.TypeHint = o.TypeHint | (0x02 & 0x7F)
+	o.Length = 0x02
+	return marshalBinary(o)
 }
 
 // Unmarshal de-serializes the binary data and stores the result in the receiver.
 func (o *FlushTimeoutOption) UnmarshalBinary(b []byte) error {
-	if err := unmarshal(o, b); err != nil {
-		return err
-	}
-	return nil
+	return unmarshalBinary(o, b)
 }
 
 // QoSType is the option type of QoS configuration option.
@@ -81,7 +73,8 @@ const QoSOptionType = 0x03
 
 // QoSOption implements QoS (0x03) [Vol 3, Part A, 5.3].
 type QoSOption struct {
-	hint            uint8
+	TypeHint        uint8
+	Length          uint8
 	Flags           uint8
 	ServiceType     uint8
 	TokenBucketSize uint32
@@ -97,26 +90,21 @@ func (o *QoSOption) Type() uint8 { return 0x03 }
 func (o *QoSOption) Len() uint8 { return 0x13 }
 
 // Hint returns if a bad value should cause the connection to fail
-func (o *QoSOption) Hint() uint8 { return o.hint }
+func (o *QoSOption) Hint() uint8 { return optionHintFromTypeHint(o.TypeHint) }
 
 // SetHint sets the Hint value based off of the MSB of the Type
-func (o *QoSOption) SetHint(hint uint8) { o.hint = hint }
+func (o *QoSOption) SetHint(hint uint8) { o.TypeHint = 0x03&0x7F | hint&0x01<<7 }
 
 // Marshal serializes the command parameters into binary form.
 func (o *QoSOption) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 0, o.Len())
-	if err := marshal(o, b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	o.TypeHint = o.TypeHint | (0x03 & 0x7F)
+	o.Length = 0x13
+	return marshalBinary(o)
 }
 
 // Unmarshal de-serializes the binary data and stores the result in the receiver.
 func (o *QoSOption) UnmarshalBinary(b []byte) error {
-	if err := unmarshal(o, b); err != nil {
-		return err
-	}
-	return nil
+	return unmarshalBinary(o, b)
 }
 
 // RetransmissionAndFlowControlType is the option type of Retransmission And Flow Control configuration option.
@@ -124,7 +112,8 @@ const RetransmissionAndFlowControlOptionType = 0x04
 
 // RetransmissionAndFlowControlOption implements Retransmission And Flow Control (0x04) [Vol 3, Part A, 5.4].
 type RetransmissionAndFlowControlOption struct {
-	hint                  uint8
+	TypeHint              uint8
+	Length                uint8
 	Mode                  uint8
 	TxWindowSize          uint8
 	MaxTransmit           uint8
@@ -140,26 +129,23 @@ func (o *RetransmissionAndFlowControlOption) Type() uint8 { return 0x04 }
 func (o *RetransmissionAndFlowControlOption) Len() uint8 { return 0x09 }
 
 // Hint returns if a bad value should cause the connection to fail
-func (o *RetransmissionAndFlowControlOption) Hint() uint8 { return o.hint }
+func (o *RetransmissionAndFlowControlOption) Hint() uint8 { return optionHintFromTypeHint(o.TypeHint) }
 
 // SetHint sets the Hint value based off of the MSB of the Type
-func (o *RetransmissionAndFlowControlOption) SetHint(hint uint8) { o.hint = hint }
+func (o *RetransmissionAndFlowControlOption) SetHint(hint uint8) {
+	o.TypeHint = 0x04&0x7F | hint&0x01<<7
+}
 
 // Marshal serializes the command parameters into binary form.
 func (o *RetransmissionAndFlowControlOption) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 0, o.Len())
-	if err := marshal(o, b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	o.TypeHint = o.TypeHint | (0x04 & 0x7F)
+	o.Length = 0x09
+	return marshalBinary(o)
 }
 
 // Unmarshal de-serializes the binary data and stores the result in the receiver.
 func (o *RetransmissionAndFlowControlOption) UnmarshalBinary(b []byte) error {
-	if err := unmarshal(o, b); err != nil {
-		return err
-	}
-	return nil
+	return unmarshalBinary(o, b)
 }
 
 // FrameCheckSequenceType is the option type of Frame Check Sequence configuration option.
@@ -167,8 +153,9 @@ const FrameCheckSequenceOptionType = 0x05
 
 // FrameCheckSequenceOption implements Frame Check Sequence (0x05) [Vol 3, Part A, 5.5].
 type FrameCheckSequenceOption struct {
-	hint    uint8
-	FCSType uint8
+	TypeHint uint8
+	Length   uint8
+	FCSType  uint8
 }
 
 // Type ...
@@ -178,26 +165,21 @@ func (o *FrameCheckSequenceOption) Type() uint8 { return 0x05 }
 func (o *FrameCheckSequenceOption) Len() uint8 { return 0x01 }
 
 // Hint returns if a bad value should cause the connection to fail
-func (o *FrameCheckSequenceOption) Hint() uint8 { return o.hint }
+func (o *FrameCheckSequenceOption) Hint() uint8 { return optionHintFromTypeHint(o.TypeHint) }
 
 // SetHint sets the Hint value based off of the MSB of the Type
-func (o *FrameCheckSequenceOption) SetHint(hint uint8) { o.hint = hint }
+func (o *FrameCheckSequenceOption) SetHint(hint uint8) { o.TypeHint = 0x05&0x7F | hint&0x01<<7 }
 
 // Marshal serializes the command parameters into binary form.
 func (o *FrameCheckSequenceOption) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 0, o.Len())
-	if err := marshal(o, b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	o.TypeHint = o.TypeHint | (0x05 & 0x7F)
+	o.Length = 0x01
+	return marshalBinary(o)
 }
 
 // Unmarshal de-serializes the binary data and stores the result in the receiver.
 func (o *FrameCheckSequenceOption) UnmarshalBinary(b []byte) error {
-	if err := unmarshal(o, b); err != nil {
-		return err
-	}
-	return nil
+	return unmarshalBinary(o, b)
 }
 
 // ExtendedFlowSpecificationType is the option type of Extended Flow Specification configuration option.
@@ -205,7 +187,8 @@ const ExtendedFlowSpecificationOptionType = 0x06
 
 // ExtendedFlowSpecificationOption implements Extended Flow Specification (0x06) [Vol 3, Part A, 5.6].
 type ExtendedFlowSpecificationOption struct {
-	hint                uint8
+	TypeHint            uint8
+	Length              uint8
 	Identifier          uint8
 	ServiceType         uint8
 	MaximumSDUSize      uint8
@@ -221,26 +204,21 @@ func (o *ExtendedFlowSpecificationOption) Type() uint8 { return 0x06 }
 func (o *ExtendedFlowSpecificationOption) Len() uint8 { return 0x10 }
 
 // Hint returns if a bad value should cause the connection to fail
-func (o *ExtendedFlowSpecificationOption) Hint() uint8 { return o.hint }
+func (o *ExtendedFlowSpecificationOption) Hint() uint8 { return optionHintFromTypeHint(o.TypeHint) }
 
 // SetHint sets the Hint value based off of the MSB of the Type
-func (o *ExtendedFlowSpecificationOption) SetHint(hint uint8) { o.hint = hint }
+func (o *ExtendedFlowSpecificationOption) SetHint(hint uint8) { o.TypeHint = 0x06&0x7F | hint&0x01<<7 }
 
 // Marshal serializes the command parameters into binary form.
 func (o *ExtendedFlowSpecificationOption) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 0, o.Len())
-	if err := marshal(o, b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	o.TypeHint = o.TypeHint | (0x06 & 0x7F)
+	o.Length = 0x10
+	return marshalBinary(o)
 }
 
 // Unmarshal de-serializes the binary data and stores the result in the receiver.
 func (o *ExtendedFlowSpecificationOption) UnmarshalBinary(b []byte) error {
-	if err := unmarshal(o, b); err != nil {
-		return err
-	}
-	return nil
+	return unmarshalBinary(o, b)
 }
 
 // ExtendedWindowSizeType is the option type of Extended Window Size configuration option.
@@ -248,7 +226,8 @@ const ExtendedWindowSizeOptionType = 0x07
 
 // ExtendedWindowSizeOption implements Extended Window Size (0x07) [Vol 3, Part A, 5.6].
 type ExtendedWindowSizeOption struct {
-	hint          uint8
+	TypeHint      uint8
+	Length        uint8
 	MaxWindowSize uint8
 }
 
@@ -259,24 +238,19 @@ func (o *ExtendedWindowSizeOption) Type() uint8 { return 0x07 }
 func (o *ExtendedWindowSizeOption) Len() uint8 { return 0x02 }
 
 // Hint returns if a bad value should cause the connection to fail
-func (o *ExtendedWindowSizeOption) Hint() uint8 { return o.hint }
+func (o *ExtendedWindowSizeOption) Hint() uint8 { return optionHintFromTypeHint(o.TypeHint) }
 
 // SetHint sets the Hint value based off of the MSB of the Type
-func (o *ExtendedWindowSizeOption) SetHint(hint uint8) { o.hint = hint }
+func (o *ExtendedWindowSizeOption) SetHint(hint uint8) { o.TypeHint = 0x07&0x7F | hint&0x01<<7 }
 
 // Marshal serializes the command parameters into binary form.
 func (o *ExtendedWindowSizeOption) MarshalBinary() ([]byte, error) {
-	b := make([]byte, 0, o.Len())
-	if err := marshal(o, b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	o.TypeHint = o.TypeHint | (0x07 & 0x7F)
+	o.Length = 0x02
+	return marshalBinary(o)
 }
 
 // Unmarshal de-serializes the binary data and stores the result in the receiver.
 func (o *ExtendedWindowSizeOption) UnmarshalBinary(b []byte) error {
-	if err := unmarshal(o, b); err != nil {
-		return err
-	}
-	return nil
+	return unmarshalBinary(o, b)
 }

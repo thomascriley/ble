@@ -100,10 +100,9 @@ func (p *ParameterNegotiation) UnmarshalBinary(b []byte) error {
 	// first 4 bits are the FrameType, last 4 are the ConvergenceLayer
 	if b[i+1] == 0xF0 {
 		p.CreditBasedFlowControl = true
-	} else {
-		p.ConvergenceLayer = b[i+1] >> 4 & 0x0F
-		p.FrameType = b[i+1] & 0x0F
 	}
+	p.ConvergenceLayer = b[i+1] >> 4 & 0x0F
+	p.FrameType = b[i+1] & 0x0F
 
 	// first 6 bits are Priority, last two are padding
 	p.Priority = b[i+2] & 0x3F

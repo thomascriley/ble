@@ -27,7 +27,7 @@ func (m *RemoteLineStatus) UnmarshalBinary(b []byte) error {
 	if err != nil {
 		return err
 	}
-	i := HeaderSize + 1
+	i := HeaderSize
 
 	m.ServerChannel = b[i] >> 2 & 0x3F
 	m.LineStatus = b[i+1] & 0x0F

@@ -2,6 +2,8 @@ package l2cap
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 )
 
 const (
@@ -115,10 +117,9 @@ func (s *ConfigurationRequest) Marshal() []byte {
 	for _, option := range s.ConfigurationOptions {
 		bo, err := option.MarshalBinary()
 		if err != nil {
+			fmt.Printf("Could not marshal option: %s", err)
 			continue
 		}
-		b = append(b, option.Type()&0x7F|option.Hint()&0x01<<7)
-		b = append(b, option.Len())
 		b = append(b, bo...)
 	}
 	return b
@@ -131,7 +132,7 @@ func (s *ConfigurationRequest) Unmarshal(b []byte) error {
 
 	for i := 4; i < len(b); {
 		var option Option
-		switch uint8(b[i] & 0x7F) {
+		switch optionType := optionTypeFromTypeHint(b[i]); optionType {
 		case MTUOptionType:
 			option = &MTUOption{}
 		case FlushTimeoutOptionType:
@@ -147,16 +148,17 @@ func (s *ConfigurationRequest) Unmarshal(b []byte) error {
 		case ExtendedWindowSizeOptionType:
 			option = &ExtendedWindowSizeOption{}
 		default:
+			fmt.Printf("Option error: unknown option type %X", optionType)
 			i = i + int(b[i+1]) + 2
 			continue
 		}
 
-		option.SetHint(uint8(b[i] >> 7 & 0x01))
-		if err := option.UnmarshalBinary(b[i+2:]); err != nil {
+		if err := option.UnmarshalBinary(b[i:]); err != nil {
+			fmt.Printf("Could not unmarshal option: %s", err)
 			return err
 		}
 		s.ConfigurationOptions = append(s.ConfigurationOptions, option)
-		i = i + int(b[i+1]) + 2
+		i = i + int(option.Len()) + 2
 	}
 	return nil
 }
@@ -176,10 +178,9 @@ func (s *ConfigurationResponse) Marshal() []byte {
 	for _, option := range s.ConfigurationOptions {
 		bo, err := option.MarshalBinary()
 		if err != nil {
+			fmt.Printf("Error marshalling option: %s", err)
 			continue
 		}
-		b = append(b, option.Type()&0x7F|option.Hint()&0x01<<7)
-		b = append(b, option.Len())
 		b = append(b, bo...)
 	}
 	return b
@@ -247,13 +248,20 @@ func (s *InformationResponse) Unmarshal(b []byte) error {
 	s.InfoType = binary.LittleEndian.Uint16(b[0:])
 	s.Result = binary.LittleEndian.Uint16(b[2:])
 
-	switch s.InfoType {
-	case InfoTypeConnectionlessMTU:
-		s.ConnectionlessMTU = binary.LittleEndian.Uint16(b[4:])
-	case InfoTypeExtendedFeatures:
-		s.ExtendedFeatureMask = binary.LittleEndian.Uint32(b[4:])
-	case InfoTypeFixedChannels:
-		s.FixedChannels = binary.LittleEndian.Uint64(b[4:])
+	switch s.Result {
+	case InfoResponseResultNotSupported:
+		return errors.New("Not supported")
+	case InfoResponseResultSuccess:
+		switch s.InfoType {
+		case InfoTypeConnectionlessMTU:
+			s.ConnectionlessMTU = binary.LittleEndian.Uint16(b[4:])
+		case InfoTypeExtendedFeatures:
+			s.ExtendedFeatureMask = binary.LittleEndian.Uint32(b[4:])
+		case InfoTypeFixedChannels:
+			s.FixedChannels = binary.LittleEndian.Uint64(b[4:])
+		}
+		return nil
+	default:
+		return fmt.Errorf("Unknown result: %X", s.Result)
 	}
-	return nil
 }

@@ -2,7 +2,8 @@
 const {{esc .Name}}OptionType = {{.Type}}
 // {{esc .Name}}Option implements {{.Name}} ({{.Type}}) [{{.Spec}}].
 type {{esc .Name}}Option struct {
-	hint uint8
+	TypeHint uint8
+	Length uint8
 {{range .Fields}}{{range $k, $v := .}}{{printf "\t%s\t%s\n" (esc $k) $v}}{{end}}{{end}}}
 
 // Type ...
@@ -12,25 +13,20 @@ func (o *{{esc .Name}}Option) Type() uint8 { return {{.Type}} }
 func (o *{{esc .Name}}Option) Len() uint8  { return {{.Length}} }
 
 // Hint returns if a bad value should cause the connection to fail
-func (o *{{esc .Name}}Option) Hint() uint8 { return o.hint }
+func (o *{{esc .Name}}Option) Hint() uint8 { return optionHintFromTypeHint(o.TypeHint) }
 
 // SetHint sets the Hint value based off of the MSB of the Type
-func (o *{{esc .Name}}Option) SetHint(hint uint8) { o.hint = hint }
+func (o *{{esc .Name}}Option) SetHint(hint uint8) { o.TypeHint = {{.Type}}&0x7F|hint&0x01<<7 }
 
 // Marshal serializes the command parameters into binary form.
 func (o *{{esc .Name}}Option) MarshalBinary() ([]byte,error) {
-	b := make([]byte, 0, o.Len())
-	if err := marshal(o, b); err != nil {
-		return nil, err
-	}
-	return b, nil
+	o.TypeHint = o.TypeHint | ({{.Type}}&0x7F)
+	o.Length = {{.Length}}
+	return marshalBinary(o)
 }
 
 
 // Unmarshal de-serializes the binary data and stores the result in the receiver.
 func (o *{{esc .Name}}Option) UnmarshalBinary(b []byte) error {
-	if err := unmarshal(o, b); err != nil {
-		return err
-	}
-	return nil
+	return unmarshalBinary(o, b)
 }

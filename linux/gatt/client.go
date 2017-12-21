@@ -52,6 +52,10 @@ func (p *Client) Name() string {
 	return p.name
 }
 
+func (p *Client) Connection() ble.Conn {
+	return p.conn
+}
+
 // Profile returns the discovered profile.
 func (p *Client) Profile() *ble.Profile {
 	p.RLock()

@@ -17,7 +17,6 @@ func (m *Test) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 	i := HeaderSize
-
 	b[i] = m.Data
 	return b, nil
 }

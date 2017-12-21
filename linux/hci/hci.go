@@ -13,6 +13,7 @@ import (
 	"github.com/thomascriley/ble/linux/hci/cmd"
 	"github.com/thomascriley/ble/linux/hci/evt"
 	"github.com/thomascriley/ble/linux/hci/socket"
+	"github.com/thomascriley/ble/linux/smp"
 )
 
 // Command ...
@@ -134,6 +135,9 @@ type HCI struct {
 	dialerTmo   time.Duration
 	listenerTmo time.Duration
 
+	// SMP capabilities
+	smpCapabilites smp.Capabilities
+
 	err  error
 	done chan bool
 }
@@ -166,6 +170,7 @@ func (h *HCI) Init() error {
 	h.evth[evt.ConnectionCompleteCode] = h.handleConnectionComplete
 	h.evth[evt.PageScanRepetitionModeChangeCode] = h.handlePageScanRepetitionModeChange
 	h.evth[evt.ReadRemoteSupportedFeaturesCompleteCode] = h.handleReadRemoteSupportedFeaturesComplete
+	h.evth[evt.MaxSlotsChangeCode] = h.handleMaxSlotsChange
 
 	h.evtMutex.Unlock()
 
@@ -371,6 +376,7 @@ func (h *HCI) handlePkt(b []byte) error {
 }
 
 func (h *HCI) handleACL(b []byte) error {
+	fmt.Printf("Received ACL Packet with handle: %d\n", packet(b).handle())
 	h.muConns.Lock()
 	c, ok := h.conns[packet(b).handle()]
 	h.muConns.Unlock()
@@ -394,6 +400,7 @@ func (h *HCI) handleEvt(b []byte) error {
 	if plen != len(b[2:]) {
 		h.err = fmt.Errorf("invalid event packet: % X", b)
 	}
+	fmt.Printf("Event Code: %X\n", b[0])
 	if f, found := h.evtHandler(code); found {
 		h.err = f(b[2:])
 		return nil
@@ -621,6 +628,7 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 }
 
 func (h *HCI) handleConnectionComplete(b []byte) error {
+	fmt.Printf("Received connection complete\n")
 	e := evt.ConnectionComplete(b)
 	c := newConn(h, e)
 
@@ -633,6 +641,7 @@ func (h *HCI) handleConnectionComplete(b []byte) error {
 		return nil
 	}
 	if ErrCommand(e.Status()) == ErrConnID {
+		fmt.Printf("The connection was cancelled\n")
 		// The connection was canceled successfully.
 		return nil
 	}
@@ -657,6 +666,14 @@ func (h *HCI) handleReadRemoteSupportedFeaturesComplete(b []byte) error {
 
 func (h *HCI) handlePageScanRepetitionModeChange(b []byte) error {
 	//e := evt.PageScanRepetitionModeChange(b)
+
+	// remote controller has successfully changed the page
+	// scan repetition mode [ Vol 2, 3.7, Table 3.8 ]
+	return nil
+}
+
+func (h *HCI) handleMaxSlotsChange(b []byte) error {
+	//e := evt.MaxSlotsChange(b)
 
 	// remote controller has successfully changed the page
 	// scan repetition mode [ Vol 2, 3.7, Table 3.8 ]

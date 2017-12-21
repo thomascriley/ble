@@ -17,12 +17,11 @@ var (
 	device = flag.String("device", "default", "implementation of ble")
 	du     = flag.Duration("du", 5*time.Second, "scanning duration")
 	dup    = flag.Bool("dup", true, "allow duplicate reported")
-	bredr  = flag.Bool("bredr", false, "scan fro BR/EDR devices")
+	bredr  = flag.Bool("bredr", true, "scan fro BR/EDR devices")
 )
 
-var ctx context.Context
-
-var address = ble.NewAddr("00:a0:96:14:18:5b")
+//var address = ble.NewAddr("00:a0:96:14:18:5b")
+var address = ble.NewAddr("00:a0:96:1c:b9:5c")
 
 func main() {
 	flag.Parse()
@@ -33,39 +32,53 @@ func main() {
 	}
 	ble.SetDefaultDevice(d)
 
+	ctxInternal, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ctx := ble.WithSigHandler(ctxInternal, cancel)
+
 	// Scan for specified durantion, or until interrupted by user.
-	fmt.Printf("Scanning for %s...\n", *du)
-	ctx = ble.WithSigHandler(context.WithTimeout(context.Background(), *du))
+	ctxScan, cancelScan := context.WithTimeout(ctx, *du)
+	defer cancelScan()
+
+	inqHandler := func(i ble.Inquiry) {
+		fmt.Printf("[%s] %3d\n", i.Address(), i.RSSI())
+
+		if i.Address().String() == address.String() {
+			cancelScan()
+
+			ctxDial, cancelDial := context.WithTimeout(ctx, 120*time.Second)
+			defer cancelDial()
+			defer cancel()
+
+			fmt.Printf("Found medtracker, dialing\n")
+			cli, err := ble.DialRFCOMM(ctxDial, address, i.ClockOffset(), i.PageScanRepetitionMode())
+			if err != nil {
+				fmt.Printf("Error dialing: %s\n", err)
+				return
+			}
+			_, err = cli.Write([]byte("status\r"))
+			if err != nil {
+				fmt.Printf("Error writing: %s\n", err)
+			}
+			bs := make([]byte, 1024)
+			n, err := cli.Read(bs)
+			if err != nil {
+				fmt.Printf("Error reading: %s\n", err)
+			}
+			fmt.Printf("Read %s", bs[:n])
+			cli.CancelConnection()
+		}
+	}
 
 	if *bredr {
-		chkErr(ble.Inquire(ctx, 255, inqHandler))
+		fmt.Printf("Bluetooth classic scanning for %s...\n", *du)
+		chkErr(ble.Inquire(ctxScan, 255, inqHandler))
 	} else {
-		chkErr(ble.Scan(ctx, *dup, advHandler, nil))
+		fmt.Printf("BLE Scanning for %s...\n", *du)
+		chkErr(ble.Scan(ctxScan, *dup, advHandler, nil))
 	}
-}
-
-func inqHandler(i ble.Inquiry) {
-	fmt.Printf("[%s] %3d\n", i.Address(), i.RSSI())
-
-	if i.Address().String() == address.String() {
-		fmt.Printf("Found medtracker, dialing\n")
-		cli, err := ble.DialRFCOMM(ctx, address)
-		if err != nil {
-			fmt.Printf("Error dialing: %s\n", err)
-			return
-		}
-		_, err = cli.Write([]byte("status\n"))
-		if err != nil {
-			fmt.Printf("Error writing: %s\n", err)
-		}
-		bs := make([]byte, 1024)
-		n, err := cli.Read(bs)
-		if err != nil {
-			fmt.Printf("Error reading: %s\n", err)
-		}
-		fmt.Printf("Read %s", bs[:n])
-		cli.CancelConnection()
-	}
+	<-ctx.Done()
 }
 
 func advHandler(a ble.Advertisement) {
@@ -97,6 +110,7 @@ func chkErr(err error) {
 	case context.Canceled:
 		fmt.Printf("canceled\n")
 	default:
+		fmt.Printf("Error: %s\n", err.Error())
 		log.Fatalf(err.Error())
 	}
 }

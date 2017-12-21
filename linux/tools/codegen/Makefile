@@ -3,8 +3,9 @@ option_out="../../l2cap/option_gen.go"
 cmd_out="../../hci/cmd/cmd_gen.go"
 evt_out="../../hci/evt/evt_gen.go"
 att_out="../../att/att_gen.go"
+pair_out="../../smp/pair_gen.go"
 
-targets := signal option cmd evt att
+targets := pair signal option cmd evt att
 
 all: ${targets}
 
