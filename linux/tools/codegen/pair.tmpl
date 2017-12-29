@@ -1,0 +1,30 @@
+// {{esc .Name}}Code is the code of {{.Name}} signaling packet.
+const {{esc .Name}}Code = {{.Code}}
+// {{esc .Name}} implements {{.Name}} ({{.Code}}) [{{.Spec}}].
+type {{esc .Name}} struct {
+{{range .Fields}}{{range $k, $v := .}}{{printf "\t%s\t%s\n" (esc $k) $v}}{{end}}{{end}}
+{{if .AuthReq}}
+	AuthReq AuthReq
+{{end}}
+{{if .KeyDist}}
+	InitiatorKeyDist KeyDist
+	ResponderKeyDist KeyDist
+{{end}}
+}
+
+// Code returns the event code of the command.
+func (s {{esc .Name}}) Code() int { return {{.Code}} }
+
+{{if .DefaultUnmarshaller}}
+// Marshal serializes the command parameters into binary form.
+func (s *{{esc .Name}}) Marshal() []byte {
+	buf:= bytes.NewBuffer(make([]byte, 0))
+	binary.Write(buf, binary.LittleEndian, s)
+	return buf.Bytes()
+}
+
+// Unmarshal de-serializes the binary data and stores the result in the receiver.
+func (s *{{esc .Name}}) Unmarshal(b []byte) error {
+	return binary.Read(bytes.NewBuffer(b), binary.LittleEndian, s)
+}
+{{end}}

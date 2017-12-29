@@ -356,7 +356,7 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 }
 
 // DialRFCOMM ...
-func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8) (ble.RFCOMMClient, error) {
+func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (ble.RFCOMMClient, error) {
 	return nil, errors.New("Not implemented")
 }
 

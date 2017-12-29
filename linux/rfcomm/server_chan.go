@@ -34,6 +34,6 @@ func (s *serverChannels) Add(c *Client) (uint8, error) {
 
 func (s *serverChannels) Remove(serverChannel uint8) {
 	s.Lock()
-	defer s.Lock()
+	defer s.Unlock()
 	delete(s.channels, serverChannel)
 }

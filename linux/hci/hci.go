@@ -57,11 +57,11 @@ func NewHCI(opts ...Option) (*HCI, error) {
 
 		dynamicCID: cidDynamicStart,
 
-		muConns:         &sync.Mutex{},
-		conns:           make(map[uint16]*Conn),
-		chMasterConn:    make(chan *Conn),
-		chMasterSPPConn: make(chan *Conn),
-		chSlaveConn:     make(chan *Conn),
+		muConns:           &sync.Mutex{},
+		conns:             make(map[uint16]*Conn),
+		chMasterConn:      make(chan *Conn),
+		chMasterBREDRConn: make(chan *Conn),
+		chSlaveConn:       make(chan *Conn),
 
 		done: make(chan bool),
 	}
@@ -126,11 +126,11 @@ type HCI struct {
 	pool *Pool
 
 	// L2CAP connections
-	muConns         *sync.Mutex
-	conns           map[uint16]*Conn
-	chMasterConn    chan *Conn // Dial returns master connections.
-	chMasterSPPConn chan *Conn // DialSPP returns master SPP connections.
-	chSlaveConn     chan *Conn // Peripheral accept slave connections.
+	muConns           *sync.Mutex
+	conns             map[uint16]*Conn
+	chMasterConn      chan *Conn // Dial returns master BLE connections.
+	chMasterBREDRConn chan *Conn // DialBREDR returns master BREDR connections.
+	chSlaveConn       chan *Conn // Peripheral accept slave connections.
 
 	dialerTmo   time.Duration
 	listenerTmo time.Duration
@@ -376,7 +376,7 @@ func (h *HCI) handlePkt(b []byte) error {
 }
 
 func (h *HCI) handleACL(b []byte) error {
-	fmt.Printf("Received ACL Packet with handle: %d\n", packet(b).handle())
+
 	h.muConns.Lock()
 	c, ok := h.conns[packet(b).handle()]
 	h.muConns.Unlock()
@@ -400,7 +400,7 @@ func (h *HCI) handleEvt(b []byte) error {
 	if plen != len(b[2:]) {
 		h.err = fmt.Errorf("invalid event packet: % X", b)
 	}
-	fmt.Printf("Event Code: %X\n", b[0])
+
 	if f, found := h.evtHandler(code); found {
 		h.err = f(b[2:])
 		return nil
@@ -491,7 +491,7 @@ func (h *HCI) handleLEConnectionComplete(b []byte) error {
 	h.muConns.Unlock()
 	if e.Role() == roleMaster {
 		if e.Status() == 0x00 {
-			fmt.Printf("Connection complete %d\n", e.ConnectionHandle())
+
 			h.chMasterConn <- c
 			return nil
 		}
@@ -536,7 +536,7 @@ func (h *HCI) handleDisconnectionComplete(b []byte) error {
 	c, found := h.conns[e.ConnectionHandle()]
 	delete(h.conns, e.ConnectionHandle())
 	h.muConns.Unlock()
-	fmt.Printf("disconnect complete event %d\n", e.ConnectionHandle())
+
 	if !found {
 		return fmt.Errorf("disconnecting an invalid handle %04X", e.ConnectionHandle())
 	}
@@ -628,7 +628,7 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 }
 
 func (h *HCI) handleConnectionComplete(b []byte) error {
-	fmt.Printf("Received connection complete\n")
+
 	e := evt.ConnectionComplete(b)
 	c := newConn(h, e)
 
@@ -637,11 +637,10 @@ func (h *HCI) handleConnectionComplete(b []byte) error {
 	h.muConns.Unlock()
 
 	if e.Status() == 0x00 {
-		h.chMasterSPPConn <- c
+		h.chMasterBREDRConn <- c
 		return nil
 	}
 	if ErrCommand(e.Status()) == ErrConnID {
-		fmt.Printf("The connection was cancelled\n")
 		// The connection was canceled successfully.
 		return nil
 	}

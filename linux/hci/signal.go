@@ -29,7 +29,7 @@ func (s sigCmd) data() []byte { return s[4 : 4+s.len()] }
 // Signal ...
 func (c *Conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 
-	fmt.Printf("Signaling (request: %X, response: %X)\n", req.Code(), rsp.Code())
+	logger.Info("Signaling (request: %X, response: %X)\n", req.Code(), rsp.Code())
 
 	// The value of this timer is implementation-dependent but the minimum
 	// initial value is 1 second and the maximum initial value is 60 seconds.
@@ -62,7 +62,7 @@ func (c *Conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 	if _, err := c.writePDU(buf.Bytes()); err != nil {
 		return err
 	}
-	fmt.Printf("Waiting for response %X\n", rsp.Code())
+
 	var s sigCmd
 	select {
 	case s = <-c.sigSent:
@@ -70,7 +70,6 @@ func (c *Conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 		return errors.New("signaling request timed out")
 	}
 
-	fmt.Printf("Received response %X\n", s.code())
 	if s.id() != c.sigID {
 		return errors.New("mismatched signaling id")
 	}
@@ -100,7 +99,7 @@ func (c *Conn) sendResponse(code uint8, id uint8, r Signal) (int, error) {
 }
 
 func (c *Conn) handleSignal(p pdu) error {
-	fmt.Printf("Received signal: %X\n", p)
+
 	logger.Debug("sig", "recv", fmt.Sprintf("[%X]", p))
 
 	s := sigCmd(p.payload())
@@ -149,9 +148,9 @@ func (c *Conn) handleSignal(p pdu) error {
 			// Check if it's a response to a sent command.
 			select {
 			case c.sigSent <- s:
-				fmt.Printf("Sent signal packet\n")
+
 			default:
-				fmt.Printf("Could not handle signal packet %X\n", s.code())
+
 				c.sendResponse(
 					l2cap.SignalCommandReject,
 					s.id(),
@@ -192,7 +191,7 @@ func (c *Conn) handleConfigurationRequest(s sigCmd) {
 
 	var req l2cap.ConfigurationRequest
 	if err := req.Unmarshal(s.data()); err != nil {
-		fmt.Printf("Could not unmarshal config request: %s", err)
+
 		rsp.Result = l2cap.ConfigurationResultFailureRejected
 		c.sendResponse(l2cap.SignalConfigurationResponse, s.id(), rsp)
 		return
@@ -337,21 +336,21 @@ func (c *Conn) handleConnectionResponse(s sigCmd) {
 func (c *Conn) handleConfigurationResponse(s sigCmd) {
 	rsp := &l2cap.ConfigurationResponse{}
 	if err := rsp.Unmarshal(s.data()); err != nil {
-		fmt.Printf("Configuration Response Error: %s\n", err)
+		logger.Error("Configuration Response Error: %s\n", err)
 		c.Close()
 		return
 	}
 
 	// wait for a non pending result
 	if rsp.Result == l2cap.ConfigurationResultPending {
-		fmt.Printf("Configuration Result Pending\n")
+
 		return
 	}
 
 	select {
 	case c.sigSent <- s:
 	default:
-		fmt.Printf("Configuration Response error: signal channel buffer full\n")
+		logger.Error("Configuration Response error: signal channel buffer full\n")
 	}
 }
 
@@ -487,7 +486,7 @@ func (c *Conn) ConfigurationRequest(options []l2cap.Option, timeout time.Duratio
 			if length+len(b) > c.sigTxMTU-8 {
 				break
 			}
-			fmt.Printf("Adding option %X\n", b)
+
 			req.ConfigurationOptions = append(req.ConfigurationOptions, options[i])
 			length = length + len(b)
 		}
@@ -509,7 +508,7 @@ func (c *Conn) ConfigurationRequest(options []l2cap.Option, timeout time.Duratio
 
 		switch rsp.Result {
 		case l2cap.ConfigurationResultSuccessful:
-			fmt.Printf("Configuration Result Success\n")
+
 		case l2cap.ConfigurationResultFailureUnacceptable:
 			return errors.New("Failure - unacceptable parameters")
 		case l2cap.ConfigurationResultFailureRejected:
@@ -517,7 +516,7 @@ func (c *Conn) ConfigurationRequest(options []l2cap.Option, timeout time.Duratio
 		case l2cap.ConfigurationResultFailureUnknown:
 			return errors.New("Failure - unknown options")
 		case l2cap.ConfigurationResultPending:
-			fmt.Printf("Unexpected Configuration Result Pending\n")
+
 			// should never get here, pending results are prehandled
 		case l2cap.ConfigurationResultFailureFlowSpecRejected:
 			return errors.New("Failure - flow spec rejected")

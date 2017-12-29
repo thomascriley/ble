@@ -326,7 +326,6 @@ func (c *Conn) recombine() error {
 		p = append(p, pdu(pkt.data())...)
 	}
 
-	fmt.Printf("Received connect packet with CID: %d\n", p.cid())
 	cid := p.cid()
 	switch {
 	case cid == cidSignal:

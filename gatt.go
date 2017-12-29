@@ -133,12 +133,12 @@ func Dial(ctx context.Context, a Addr) (Client, error) {
 }
 
 // DialRFCOMM ...
-func DialRFCOMM(ctx context.Context, a Addr, clockOffset uint16, pageScanRepetitionMode uint8) (RFCOMMClient, error) {
+func DialRFCOMM(ctx context.Context, a Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (RFCOMMClient, error) {
 	if defaultDevice == nil {
 		return nil, ErrDefaultDevice
 	}
 	defer untrap(trap(ctx))
-	return defaultDevice.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode)
+	return defaultDevice.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode, channel)
 }
 
 // Connect searches for and connects to a Peripheral which matches specified condition.

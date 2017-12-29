@@ -31,13 +31,16 @@ func (f *frame) Marshal(b []byte) (int, error) {
 	ea = 0x01
 	b[2] = ea | uint8(len(f.Payload))<<1
 
-	l := len(f.Payload)
-	if f.PollFinal == 0x01 && f.Credits > 0 {
+	i := 3
+
+	// add credits for UIH frames when PF bit is set
+	if f.ControlNumber == ControlNumberUIH && f.PollFinal == 0x01 {
 		b[3] = f.Credits
-		l = l + 1
-	} else {
-		copy(b[3:], f.Payload)
+		i++
 	}
+
+	copy(b[i:], f.Payload)
+	i = i + len(f.Payload)
 
 	// fcs [5.1.1]
 	// UIH frames: Address and Control Field
@@ -49,9 +52,10 @@ func (f *frame) Marshal(b []byte) (int, error) {
 	default:
 		fcsBytes = b[0:3]
 	}
-	b[3+l] = generateFCS(fcsBytes)
+	b[i] = generateFCS(fcsBytes)
+	i++
 
-	return 3 + l + 1, nil
+	return i, nil
 }
 
 func (f *frame) Unmarshal(b []byte) error {
@@ -72,7 +76,7 @@ func (f *frame) Unmarshal(b []byte) error {
 	var length int
 	var ea uint8 = b[2] & 0x01
 	if ea == 0x01 {
-		length = int(b[2] >> 1)
+		length = int(b[2]) >> 1
 	} else if len(b) < 4 {
 		return fmt.Errorf("The frame must be at least 4 bytes long when ea==0 (%X)", b)
 	} else { // LittleEndian
@@ -80,9 +84,9 @@ func (f *frame) Unmarshal(b []byte) error {
 	}
 	var i int = 3 + (int(ea)+1)%2
 
-	// TODO: Process credit if PollFile = 0x01
-	if length == 0 && len(b) > i+1 {
+	if f.ControlNumber == ControlNumberUIH && f.PollFinal == 0x01 {
 		f.Credits = b[i]
+		i = i + 1
 	}
 
 	// Payload

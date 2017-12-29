@@ -38,19 +38,19 @@ type Client struct {
 
 // NewClient returns an RFCOMM Client that has been initialized according to the
 // RFCOMM specifications.
-func NewClient(ctx context.Context, l2c ble.Conn) (*Client, error) {
+func NewClient(ctx context.Context, l2c ble.Conn, channel uint8) (*Client, error) {
 	c := &Client{
-		l2c:     l2c,
-		p2p:     make(chan []byte, 1),
-		chErr:   make(chan error),
-		chTxBuf: make(chan []byte, 1),
-		rxBuf:   make([]byte, ble.MaxACLMTU)}
+		l2c:           l2c,
+		p2p:           make(chan []byte, 1),
+		chErr:         make(chan error),
+		chTxBuf:       make(chan []byte, 1),
+		rxBuf:         make([]byte, ble.MaxACLMTU),
+		serverChannel: channel}
 	c.chTxBuf <- make([]byte, l2c.TxMTU(), l2c.TxMTU())
 	c.Lock()
 	defer c.Unlock()
 	go c.loop()
 	if err := c.connect(ctx); err != nil {
-		fmt.Printf("RFCOMM Error: %s\n", err)
 		c.sendDISC(ctx)
 		c.l2c.Close()
 		return nil, err
@@ -60,49 +60,56 @@ func NewClient(ctx context.Context, l2c ble.Conn) (*Client, error) {
 
 // Connect ...
 func (c *Client) connect(ctx context.Context) error {
+	discCtx, discCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer discCancel()
+
 	// first send a SABM on DLCI (0) and expect an UA frame. If rejected
 	// device with send a DM frame
-	fmt.Printf("Sending SABM\n")
-	if err := c.sendSABM(ctx, c.serverChannel); err != nil {
+
+	if err := c.sendSABM(ctx, 0); err != nil {
+		c.sendDISC(discCtx)
 		return err
 	}
 
 	// add to list of connected RFCOMM devices
-	serverChannel, err := serverChannelNumbers.Add(c)
+	/*serverChannel, err := serverChannelNumbers.Add(c)
 	if err != nil {
 		return err
 	}
-	c.serverChannel = serverChannel
+	c.serverChannel = serverChannel*/
 
 	// send parameter negotiation [optional]
-	fmt.Printf("Sending Paramaeter Negotiation\n")
-	if err = c.sendParameterNegotiation(ctx, Priority, MaxFrameSize); err != nil {
+
+	if err := c.sendParameterNegotiation(ctx, Priority, MaxFrameSize); err != nil {
 		fmt.Printf("Error negotiating the rfcomm parameters: %s\n", err)
 	}
 
 	// send SABM on (DLCI X)
-	fmt.Printf("Sending SABM\n")
-	if err = c.sendSABM(ctx, c.serverChannel); err != nil {
+
+	if err := c.sendSABM(ctx, c.serverChannel); err != nil {
+		c.sendDISC(discCtx)
 		return err
 	}
 
 	// MSC FRAME
-	fmt.Printf("Sending Modem Status\n")
-	if err = c.sendModemStatus(ctx); err != nil {
+
+	if err := c.sendModemStatus(ctx); err != nil {
+		c.sendDISC(discCtx)
 		return err
 	}
 
 	// Exchange Credits
-	fmt.Printf("Exchanging Credits\n")
-	if err = c.exchangeCredits(ctx, 0x21); err != nil {
+
+	if err := c.exchangeCredits(ctx, 0x21); err != nil {
+		c.sendDISC(discCtx)
 		return err
 	}
 
 	// Send connection test
-	/*fmt.Printf("Sending Test\n")
-	if err := c.sendTest(ctx, 0x08); err != nil {
-		return err
-	}*/
+	/*
+		if err := c.sendTest(ctx, 0x08); err != nil {
+			return err
+		}*/
 
 	time.Sleep(2 * time.Second)
 	return nil
@@ -142,7 +149,6 @@ func (c *Client) Read(b []byte) (int, error) {
 			}
 			if frm.PollFinal == 0x01 {
 				c.credits = c.credits - frm.Credits
-				continue
 			}
 			copy(b[:], frm.Payload)
 			return len(frm.Payload), nil
@@ -172,7 +178,9 @@ func (c *Client) CancelConnection() error {
 	defer c.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	c.sendDISC(ctx)
+	if err := c.sendDISC(ctx); err != nil {
+		fmt.Printf("Error: %s\n", err)
+	}
 	return c.l2c.Close()
 }
 
@@ -184,20 +192,39 @@ func (c *Client) Disconnected() <-chan struct{} {
 }
 
 func (c *Client) sendDISC(ctx context.Context) error {
-	fmt.Printf("Sending DISC frame\n")
 	defer serverChannelNumbers.Remove(c.serverChannel)
-	if err := c.sendDISCFrame(ctx); err != nil {
+	if err := c.sendDISCFrame(ctx, c.serverChannel); err != nil {
 		return err
 	}
-	select {
-	case <-ctx.Done():
-	case <-c.p2p:
+
+	for {
+		frm, err := c.getFrame(ctx)
+		if err != nil {
+			return err
+		}
+		if frm.ControlNumber == ControlNumberUA {
+			break
+		}
+	}
+
+	if err := c.sendDISCFrame(ctx, 0x00); err != nil {
+		return err
+	}
+
+	for {
+		frm, err := c.getFrame(ctx)
+		if err != nil {
+			return err
+		}
+		if frm.ControlNumber == ControlNumberUA {
+			break
+		}
 	}
 	return nil
 }
 
 func (c *Client) sendSABM(ctx context.Context, serverChan uint8) error {
-	fmt.Printf("Sending SABM frame\n")
+
 	if err := c.sendSABMFrame(ctx, serverChan); err != nil {
 		return err
 	}
@@ -206,7 +233,6 @@ func (c *Client) sendSABM(ctx context.Context, serverChan uint8) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("SABM control number: %X\n", frm.ControlNumber)
 
 	// TODO: check for LMP Authentication
 	switch frm.ControlNumber {
@@ -218,7 +244,7 @@ func (c *Client) sendSABM(ctx context.Context, serverChan uint8) error {
 }
 
 func (c *Client) sendParameterNegotiation(ctx context.Context, priority uint8, maxFrameSize uint16) error {
-	fmt.Printf("Sending parameter negotiation\n")
+
 	err := c.sendMultiplexerFrame(ctx, &multiplexer.ParameterNegotiation{
 		CommandResponse:        0x01,
 		ServerChannel:          c.serverChannel,
@@ -356,6 +382,7 @@ func (c *Client) sendModemStatus(ctx context.Context) error {
 
 	// acknowledge the remote's modem status
 	ms.CommandResponse = 0x00
+	ms.ServerChannel = c.serverChannel
 	if c.sendMultiplexerFrame(ctx, ms); err != nil {
 		return err
 	}
@@ -374,7 +401,7 @@ func (c *Client) sendModemStatus(ctx context.Context) error {
 func (c *Client) exchangeCredits(ctx context.Context, credits uint8) error {
 	err := c.sendFrame(ctx, &frame{
 		Direction:        0x00,
-		ServerChannel:    0x01,
+		ServerChannel:    c.serverChannel,
 		ControlNumber:    ControlNumberUIH,
 		CommmandResponse: 0x01,
 		PollFinal:        0x01,
@@ -384,7 +411,6 @@ func (c *Client) exchangeCredits(ctx context.Context, credits uint8) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Waiting for credit response")
 	frm, err := c.getFrame(ctx)
 	if err != nil {
 		return err
@@ -392,7 +418,6 @@ func (c *Client) exchangeCredits(ctx context.Context, credits uint8) error {
 	if frm.ControlNumber != ControlNumberUIH {
 		return errors.New("Received unexpected control number")
 	}
-	fmt.Println("Received credits")
 	c.credits = frm.Credits
 	return nil
 }
@@ -452,10 +477,10 @@ func (c *Client) sendUIHFrame(ctx context.Context, direction uint8, serverChanne
 		Payload:          data})
 }
 
-func (c *Client) sendDISCFrame(ctx context.Context) error {
+func (c *Client) sendDISCFrame(ctx context.Context, channel uint8) error {
 	return c.sendFrame(ctx, &frame{
-		Direction:        0x01,
-		ServerChannel:    c.serverChannel,
+		Direction:        0x00,
+		ServerChannel:    channel,
 		ControlNumber:    ControlNumberDISC,
 		CommmandResponse: 0x01,
 		PollFinal:        0x01,
@@ -463,7 +488,7 @@ func (c *Client) sendDISCFrame(ctx context.Context) error {
 }
 
 func (c *Client) sendFrame(ctx context.Context, frm *frame) error {
-	fmt.Printf("Waiting for TxBuf\n")
+
 	var txBuf []byte
 	select {
 	case <-ctx.Done():
@@ -486,7 +511,6 @@ func (c *Client) sendFrame(ctx context.Context, frm *frame) error {
 		return fmt.Errorf("The frame is larger than the mtu %d > %d", n, c.l2c.TxMTU())
 	}
 
-	fmt.Printf("Writing to l2c\n")
 	_, err = c.l2c.Write(txBuf[:n])
 	return err
 }
@@ -495,12 +519,10 @@ func (c *Client) getFrame(ctx context.Context) (*frame, error) {
 	// l2cap has been setup, now we need to setup the RFCOMM connection.
 	// command timeouts are 60s, if times out then send a DISC frame
 	// on the original SAMB channel
-	fmt.Printf("Waiting for frame\n")
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case p, ok := <-c.p2p:
-		fmt.Printf("Received Frame\n")
 		if !ok {
 			return nil, errors.New("Channel closed")
 		}
@@ -520,7 +542,6 @@ func (c *Client) getFrame(ctx context.Context) (*frame, error) {
 		}
 		return frm, nil
 	case <-time.After(60 * time.Second):
-		fmt.Printf("Timed out\n")
 		return nil, errors.New("Timed out")
 	}
 }
@@ -529,10 +550,10 @@ func (c *Client) getFrame(ctx context.Context) (*frame, error) {
 func (c *Client) loop() {
 
 	for {
-		fmt.Printf("Reading P2P\n")
+
 		n, err := c.l2c.Read(c.rxBuf)
 		if err != nil {
-			fmt.Printf("P2P Error: %s", err)
+
 			// We don't expect any error from the bearer (L2CAP ACL-U)
 			// Pass it along to the pending read, if any, and escape.
 			c.chErr <- err
@@ -541,8 +562,6 @@ func (c *Client) loop() {
 
 		b := make([]byte, n)
 		copy(b, c.rxBuf)
-		fmt.Printf("Sending P2P\n")
-
 		c.p2p <- b
 	}
 }

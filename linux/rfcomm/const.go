@@ -11,7 +11,7 @@ const (
 	ControlNumberDM uint8 = 0x0F
 
 	// ControlNumberDISC Disconnect
-	ControlNumberDISC uint8 = 0xC3
+	ControlNumberDISC uint8 = 0x43
 
 	// ControlNumberUIH Unnumbered Information with Header Check
 	ControlNumberUIH uint8 = 0xEF

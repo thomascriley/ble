@@ -70,6 +70,9 @@ const (
 	MoveChannelResultConfigNotSupported     uint16 = 0x0004
 	MoveChannelResultCollision              uint16 = 0x0005
 	MoveChannelResultNotAllowed             uint16 = 0x0006
+
+	// [ Vol 3, Part A, 3.2]
+	DefaultConnectionlessMTU uint16 = 0x0030
 )
 
 // Marshal Serializes the struct into binary data int LittleEndian order
@@ -117,7 +120,7 @@ func (s *ConfigurationRequest) Marshal() []byte {
 	for _, option := range s.ConfigurationOptions {
 		bo, err := option.MarshalBinary()
 		if err != nil {
-			fmt.Printf("Could not marshal option: %s", err)
+			logger.Error("Could not marshal option: %s", err)
 			continue
 		}
 		b = append(b, bo...)
@@ -148,13 +151,13 @@ func (s *ConfigurationRequest) Unmarshal(b []byte) error {
 		case ExtendedWindowSizeOptionType:
 			option = &ExtendedWindowSizeOption{}
 		default:
-			fmt.Printf("Option error: unknown option type %X", optionType)
+			logger.Error("Option error: unknown option type %X", optionType)
 			i = i + int(b[i+1]) + 2
 			continue
 		}
 
 		if err := option.UnmarshalBinary(b[i:]); err != nil {
-			fmt.Printf("Could not unmarshal option: %s", err)
+			logger.Error("Could not unmarshal option: %s", err)
 			return err
 		}
 		s.ConfigurationOptions = append(s.ConfigurationOptions, option)
@@ -178,7 +181,7 @@ func (s *ConfigurationResponse) Marshal() []byte {
 	for _, option := range s.ConfigurationOptions {
 		bo, err := option.MarshalBinary()
 		if err != nil {
-			fmt.Printf("Error marshalling option: %s", err)
+			logger.Error("Error marshalling option: %s", err)
 			continue
 		}
 		b = append(b, bo...)
@@ -254,11 +257,20 @@ func (s *InformationResponse) Unmarshal(b []byte) error {
 	case InfoResponseResultSuccess:
 		switch s.InfoType {
 		case InfoTypeConnectionlessMTU:
-			s.ConnectionlessMTU = binary.LittleEndian.Uint16(b[4:])
+			if len(b) > 5 {
+				s.ConnectionlessMTU = binary.LittleEndian.Uint16(b[4:])
+			}
+			if s.ConnectionlessMTU == 0 {
+				s.ConnectionlessMTU = DefaultConnectionlessMTU
+			}
 		case InfoTypeExtendedFeatures:
-			s.ExtendedFeatureMask = binary.LittleEndian.Uint32(b[4:])
+			if len(b) > 7 {
+				s.ExtendedFeatureMask = binary.LittleEndian.Uint32(b[4:])
+			}
 		case InfoTypeFixedChannels:
-			s.FixedChannels = binary.LittleEndian.Uint64(b[4:])
+			if len(b) > 11 {
+				s.FixedChannels = binary.LittleEndian.Uint64(b[4:])
+			}
 		}
 		return nil
 	default:

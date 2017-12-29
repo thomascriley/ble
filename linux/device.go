@@ -207,10 +207,11 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 }
 
 // DialRFCOMM ...
-func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8) (ble.RFCOMMClient, error) {
+// TODO: implement SDP to determine RFCOMM channel number
+func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8, channel uint8) (ble.RFCOMMClient, error) {
 	// d.HCI.DialRFCOMM is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
-	cln, err := d.HCI.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode)
+	cln, err := d.HCI.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode, channel)
 	return cln, errors.Wrap(err, "can't dial")
 }
 

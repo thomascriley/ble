@@ -1,10 +1,12 @@
 package ble
 
-import "io"
-
 // A Client is a GATT client.
 type RFCOMMClient interface {
-	io.ReadWriter
+	// Read implements io.Reader
+	Read([]byte) (int, error)
+
+	// Write implements io.Writer
+	Write([]byte) (int, error)
 
 	// Address returns platform specific unique ID of the remote peripheral, e.g. MAC on Linux, Client UUID on OS X.
 	Address() Addr
