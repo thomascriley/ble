@@ -33,7 +33,9 @@ type Client struct {
 
 	serverChannel uint8
 
-	credits uint8
+	flowControl bool
+	credits     uint16
+	waitCredits chan struct{}
 }
 
 // NewClient returns an RFCOMM Client that has been initialized according to the
@@ -44,6 +46,7 @@ func NewClient(ctx context.Context, l2c ble.Conn, channel uint8) (*Client, error
 		p2p:           make(chan []byte, 1),
 		chErr:         make(chan error),
 		chTxBuf:       make(chan []byte, 1),
+		waitCredits:   make(chan struct{}),
 		rxBuf:         make([]byte, ble.MaxACLMTU),
 		serverChannel: channel}
 	c.chTxBuf <- make([]byte, l2c.TxMTU(), l2c.TxMTU())
@@ -72,6 +75,7 @@ func (c *Client) connect(ctx context.Context) error {
 	}
 
 	// add to list of connected RFCOMM devices
+	// TODO: use sdp to figure out which channel supports RFCOMM
 	/*serverChannel, err := serverChannelNumbers.Add(c)
 	if err != nil {
 		return err
@@ -147,8 +151,15 @@ func (c *Client) Read(b []byte) (int, error) {
 			if frm.ControlNumber != ControlNumberUIH {
 				return 0, errors.New("Invalid control number")
 			}
-			if frm.PollFinal == 0x01 {
-				c.credits = c.credits - frm.Credits
+			if c.flowControl && frm.PollFinal == 0x01 {
+				c.credits = c.credits + uint16(frm.Credits)
+				select {
+				case <-c.waitCredits:
+				default:
+					if c.credits > 0 {
+						close(c.waitCredits)
+					}
+				}
 			}
 			copy(b[:], frm.Payload)
 			return len(frm.Payload), nil
@@ -162,6 +173,24 @@ func (c *Client) Read(b []byte) (int, error) {
 func (c *Client) Write(v []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	case <-c.waitCredits:
+	default:
+		if _, err := c.Read(make([]byte, c.l2c.RxMTU())); err != nil {
+			return 0, err
+		}
+	}
+	if c.flowControl {
+		c.credits = c.credits - 1
+		if c.credits == 0 {
+			c.waitCredits = make(chan struct{})
+		}
+		fmt.Printf("Credits: %d", c.credits)
+	}
+
 	return len(v), c.sendFrame(ctx, &frame{
 		ControlNumber:      ControlNumberUIH,
 		CommmandResponse:   0x01,
@@ -418,7 +447,12 @@ func (c *Client) exchangeCredits(ctx context.Context, credits uint8) error {
 	if frm.ControlNumber != ControlNumberUIH {
 		return errors.New("Received unexpected control number")
 	}
-	c.credits = frm.Credits
+	if frm.Credits == 0 && len(frm.Payload) > 0 {
+		c.credits = uint16(frm.Payload[0]) + 1
+	} else {
+		c.credits = uint16(frm.Credits) + 1
+	}
+	close(c.waitCredits)
 	return nil
 }
 
@@ -494,6 +528,9 @@ func (c *Client) sendFrame(ctx context.Context, frm *frame) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	case txBuf = <-c.chTxBuf:
+		if len(txBuf) < int(c.maxFrameSize) {
+			txBuf = make([]byte, c.maxFrameSize, c.maxFrameSize)
+		}
 	}
 	defer func() {
 		select {
@@ -510,6 +547,9 @@ func (c *Client) sendFrame(ctx context.Context, frm *frame) error {
 	if n > c.l2c.TxMTU() {
 		return fmt.Errorf("The frame is larger than the mtu %d > %d", n, c.l2c.TxMTU())
 	}
+	if n > int(c.maxFrameSize) && c.maxFrameSize > 0 {
+		return fmt.Errorf("The frame is larger than the max frame size %d > %d", n, c.maxFrameSize)
+	}
 
 	_, err = c.l2c.Write(txBuf[:n])
 	return err
@@ -519,30 +559,43 @@ func (c *Client) getFrame(ctx context.Context) (*frame, error) {
 	// l2cap has been setup, now we need to setup the RFCOMM connection.
 	// command timeouts are 60s, if times out then send a DISC frame
 	// on the original SAMB channel
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case p, ok := <-c.p2p:
-		if !ok {
-			return nil, errors.New("Channel closed")
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case p, ok := <-c.p2p:
+			if !ok {
+				return nil, errors.New("Channel closed")
+			}
+			frm := &frame{}
+			if err := frm.Unmarshal(p); err != nil {
+				return nil, err
+			}
+			switch frm.ControlNumber {
+			case ControlNumberDISC:
+				serverChannelNumbers.Remove(c.serverChannel)
+				c.l2c.Close()
+				return nil, errors.New("Received disconnect")
+			case ControlNumberDM:
+				serverChannelNumbers.Remove(c.serverChannel)
+				c.l2c.Close()
+				return nil, errors.New("Received disconnect mode")
+			case ControlNumberUIH:
+				if c.flowControl && frm.PollFinal == 0x01 {
+					c.credits = c.credits + uint16(frm.Credits)
+					select {
+					case <-c.waitCredits:
+					default:
+						if c.credits > 0 {
+							close(c.waitCredits)
+						}
+					}
+				}
+			}
+			return frm, nil
+		case <-time.After(60 * time.Second):
+			return nil, errors.New("Timed out")
 		}
-		frm := &frame{}
-		if err := frm.Unmarshal(p); err != nil {
-			return nil, err
-		}
-		switch frm.ControlNumber {
-		case ControlNumberDISC:
-			serverChannelNumbers.Remove(c.serverChannel)
-			c.l2c.Close()
-			return nil, errors.New("Received disconnect")
-		case ControlNumberDM:
-			serverChannelNumbers.Remove(c.serverChannel)
-			c.l2c.Close()
-			return nil, errors.New("Received disconnect mode")
-		}
-		return frm, nil
-	case <-time.After(60 * time.Second):
-		return nil, errors.New("Timed out")
 	}
 }
 

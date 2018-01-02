@@ -200,7 +200,7 @@ func (c *Conn) handleConfigurationRequest(s sigCmd) {
 	for _, option := range req.ConfigurationOptions {
 		switch option.Type() {
 		case l2cap.MTUOptionType:
-			c.rxMTU = int(option.(*l2cap.MTUOption).MTU)
+			c.txMTU = int(option.(*l2cap.MTUOption).MTU)
 		default:
 			if option.Hint() == 0x00 {
 				rsp.Result = l2cap.ConfigurationResultFailureUnknown
