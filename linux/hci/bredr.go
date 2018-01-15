@@ -75,7 +75,7 @@ func (h *HCI) RequestRemoteName(a ble.Addr) (string, error) {
 	}
 }
 
-func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (ble.RFCOMMClient, error) {
+func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (cli ble.RFCOMMClient, err error) {
 	b, err := net.ParseMAC(a.String())
 	if err != nil {
 		return nil, ErrInvalidAddr
@@ -118,13 +118,15 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		timeout := time.Duration(15 * time.Second)
 
 		if err = c.InformationRequest(l2cap.InfoTypeConnectionlessMTU, timeout); err != nil {
-			c.Close()
-			return nil, err
+			fmt.Printf("Error: %s", err.Error())
+			//c.Close()
+			//return nil, err
 		}
 
 		if err = c.InformationRequest(l2cap.InfoTypeExtendedFeatures, timeout); err != nil {
-			c.Close()
-			return nil, err
+			fmt.Printf("Error: %s", err.Error())
+			//c.Close()
+			//return nil, err
 		}
 
 		// 1.2 - 2.1 + EDR will return not supported
@@ -153,7 +155,11 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		case <-c.cfgRequest:
 		}
 
-		return rfcomm.NewClient(ctx, c, channel)
+		if cli, err = rfcomm.NewClient(ctx, c, channel); err != nil {
+			c.Close()
+		}
+		return cli, err
+
 	case <-ctx.Done():
 		h.params.Lock()
 		h.params.connCancelBREDR.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}

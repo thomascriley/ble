@@ -62,11 +62,14 @@ func NewDevice() (*Device, error) {
 
 // Device ...
 type Device struct {
-	HCI        *hci.HCI
-	Server     *gatt.Server
-	scanCtx    context.Context
-	scanCancel context.CancelFunc
-	allowDup   bool
+	HCI           *hci.HCI
+	Server        *gatt.Server
+	scanCtx       context.Context
+	scanCancel    context.CancelFunc
+	inquireCtx    context.Context
+	inquireCancel context.CancelFunc
+	numResponses  int
+	allowDup      bool
 }
 
 // AddService adds a service to database.
@@ -171,7 +174,10 @@ func (d *Device) Inquire(ctx context.Context, numResponses int, h ble.InqHandler
 	if err := d.HCI.Inquire(length, numResponses); err != nil {
 		return err
 	}
-	<-ctx.Done()
+	d.numResponses = numResponses
+	d.inquireCtx, d.inquireCancel = context.WithCancel(ctx)
+	defer d.inquireCancel()
+	<-d.inquireCtx.Done()
 	d.HCI.StopInquiry()
 	return ctx.Err()
 }
@@ -181,11 +187,7 @@ func (d *Device) RequestRemoteName(a ble.Addr) (string, error) {
 	return d.HCI.RequestRemoteName(a)
 }
 
-// Dial ...
-func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
-	// d.HCI.Dial is a blocking call, although most of time it should return immediately.
-	// But in case passing wrong device address or the device went non-connectable, it blocks.
-	// stopping the scan will improve ability to connect
+func (d *Device) tempStop() {
 	if d.scanCtx != nil {
 		select {
 		case <-d.scanCtx.Done():
@@ -193,16 +195,46 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 			d.HCI.StopScanning()
 		}
 	}
-	cln, err := d.HCI.Dial(ctx, a)
+	if d.inquireCtx != nil {
+		select {
+		case <-d.inquireCtx.Done():
+		default:
+			d.HCI.StopInquiry()
+		}
+	}
+}
+
+func (d *Device) tempStart() {
 	if d.scanCtx != nil {
 		select {
 		case <-d.scanCtx.Done():
 		default:
-			if err = d.HCI.Scan(d.allowDup); err != nil {
+			if err := d.HCI.Scan(d.allowDup); err != nil {
 				d.scanCancel()
 			}
 		}
 	}
+	if d.inquireCtx != nil {
+		select {
+		case <-d.inquireCtx.Done():
+		default:
+			deadline, _ := d.inquireCtx.Deadline()
+			length := int(deadline.Sub(time.Now()).Seconds() / 1.28)
+			if err := d.HCI.Inquire(length, d.numResponses); err != nil {
+				d.inquireCancel()
+			}
+		}
+	}
+}
+
+// Dial ...
+func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
+	// d.HCI.Dial is a blocking call, although most of time it should return immediately.
+	// But in case passing wrong device address or the device went non-connectable, it blocks.
+	// stopping the scan will improve ability to connect
+	d.tempStop()
+	cln, err := d.HCI.Dial(ctx, a)
+	d.tempStart()
 	return cln, errors.Wrap(err, "can't dial")
 }
 
@@ -211,7 +243,9 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8, channel uint8) (ble.RFCOMMClient, error) {
 	// d.HCI.DialRFCOMM is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
+	d.tempStop()
 	cln, err := d.HCI.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode, channel)
+	d.tempStart()
 	return cln, errors.Wrap(err, "can't dial")
 }
 

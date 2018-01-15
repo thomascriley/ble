@@ -222,7 +222,7 @@ func (c *Conn) Write(sdu []byte) (int, error) {
 	}
 	b := make([]byte, 4+plen)
 	binary.LittleEndian.PutUint16(b[0:2], uint16(len(sdu)))
-	binary.LittleEndian.PutUint16(b[2:4], c.DestinationID)
+	binary.LittleEndian.PutUint16(b[2:4], c.SourceID)
 	if c.leFrame {
 		binary.LittleEndian.PutUint16(b[4:6], uint16(len(sdu)))
 		copy(b[6:], sdu)
@@ -351,11 +351,14 @@ func (c *Conn) Disconnected() <-chan struct{} {
 
 // Close disconnects the connection by sending hci disconnect command to the device.
 func (c *Conn) Close() error {
+	fmt.Printf("Closing connection")
 	select {
 	case <-c.chDone:
+		fmt.Printf("Already closed")
 		// Return if it's already closed.
 		return nil
 	default:
+		fmt.Printf("Sending disconnect")
 		c.hci.Send(&cmd.Disconnect{
 			ConnectionHandle: c.param.ConnectionHandle(),
 			Reason:           0x13,

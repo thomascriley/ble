@@ -54,23 +54,28 @@ func NewClient(ctx context.Context, l2c ble.Conn, channel uint8) (*Client, error
 	defer c.Unlock()
 	go c.loop()
 	if err := c.connect(ctx); err != nil {
-		c.sendDISC(ctx)
-		c.l2c.Close()
+		if e := c.cancel(); e != nil {
+			fmt.Printf("Error: %s\n", err)
+		}
 		return nil, err
 	}
 	return c, nil
 }
 
+func (c *Client) cancel() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err := c.sendDISC(ctx); err != nil {
+		fmt.Printf("Error: %s\n", err)
+	}
+	return c.l2c.Close()
+}
+
 // Connect ...
 func (c *Client) connect(ctx context.Context) error {
-	discCtx, discCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer discCancel()
-
 	// first send a SABM on DLCI (0) and expect an UA frame. If rejected
 	// device with send a DM frame
-
 	if err := c.sendSABM(ctx, 0); err != nil {
-		c.sendDISC(discCtx)
 		return err
 	}
 
@@ -83,29 +88,22 @@ func (c *Client) connect(ctx context.Context) error {
 	c.serverChannel = serverChannel*/
 
 	// send parameter negotiation [optional]
-
 	if err := c.sendParameterNegotiation(ctx, Priority, MaxFrameSize); err != nil {
 		fmt.Printf("Error negotiating the rfcomm parameters: %s\n", err)
 	}
 
 	// send SABM on (DLCI X)
-
 	if err := c.sendSABM(ctx, c.serverChannel); err != nil {
-		c.sendDISC(discCtx)
 		return err
 	}
 
 	// MSC FRAME
-
 	if err := c.sendModemStatus(ctx); err != nil {
-		c.sendDISC(discCtx)
 		return err
 	}
 
 	// Exchange Credits
-
 	if err := c.exchangeCredits(ctx, 0x21); err != nil {
-		c.sendDISC(discCtx)
 		return err
 	}
 
@@ -130,6 +128,8 @@ func (c *Client) Address() ble.Addr {
 func (c *Client) Read(b []byte) (int, error) {
 	for {
 		select {
+		case <-time.After(60 * time.Second):
+			return 0, errors.New("Timed out")
 		case p, ok := <-c.p2p:
 			if !ok {
 				return 0, errors.Wrap(io.ErrClosedPipe, "input channel closed")
@@ -155,6 +155,8 @@ func (c *Client) Read(b []byte) (int, error) {
 				c.credits = c.credits + uint16(frm.Credits)
 				select {
 				case <-c.waitCredits:
+				case <-time.After(15 * time.Second):
+					return 0, errors.New("Timed out")
 				default:
 					if c.credits > 0 {
 						close(c.waitCredits)
@@ -171,12 +173,9 @@ func (c *Client) Read(b []byte) (int, error) {
 
 // Write RFCOMM Bluetooth specification Version 1.0 B
 func (c *Client) Write(v []byte) (int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
 	select {
-	case <-ctx.Done():
-		return 0, ctx.Err()
+	case <-time.After(60 * time.Second):
+		return 0, errors.New("Timed out")
 	case <-c.waitCredits:
 	default:
 		if _, err := c.Read(make([]byte, c.l2c.RxMTU())); err != nil {
@@ -191,6 +190,8 @@ func (c *Client) Write(v []byte) (int, error) {
 		fmt.Printf("Credits: %d", c.credits)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 	return len(v), c.sendFrame(ctx, &frame{
 		ControlNumber:      ControlNumberUIH,
 		CommmandResponse:   0x01,
@@ -205,12 +206,7 @@ func (c *Client) Write(v []byte) (int, error) {
 func (c *Client) CancelConnection() error {
 	c.Lock()
 	defer c.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	if err := c.sendDISC(ctx); err != nil {
-		fmt.Printf("Error: %s\n", err)
-	}
-	return c.l2c.Close()
+	return c.cancel()
 }
 
 // Disconnected returns a receiving channel, which is closed when the client disconnects.
@@ -585,6 +581,8 @@ func (c *Client) getFrame(ctx context.Context) (*frame, error) {
 					c.credits = c.credits + uint16(frm.Credits)
 					select {
 					case <-c.waitCredits:
+					case <-ctx.Done():
+						return nil, errors.New("Timed out")
 					default:
 						if c.credits > 0 {
 							close(c.waitCredits)

@@ -148,7 +148,6 @@ func (c *Conn) handleSignal(p pdu) error {
 			// Check if it's a response to a sent command.
 			select {
 			case c.sigSent <- s:
-
 			default:
 
 				c.sendResponse(
