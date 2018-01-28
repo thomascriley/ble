@@ -172,7 +172,7 @@ func (h *HCI) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	}
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return h.cancelConnection(ctx.Err())
 	case <-h.done:
 		return nil, h.err
 	case c := <-h.chMasterConn:
@@ -180,20 +180,7 @@ func (h *HCI) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 		c.DestinationID = cidLEAtt
 		return gatt.NewClient(c)
 	case <-tmo:
-		h.params.Lock()
-		err = h.Send(&h.params.connCancel, nil)
-		h.params.Unlock()
-
-		if err == nil {
-			// The pending connection was canceled successfully.
-			return nil, fmt.Errorf("connection timed out")
-		}
-		// The connection has been established, the cancel command
-		// failed with ErrDisallowed.
-		if err == ErrDisallowed {
-			return gatt.NewClient(<-h.chMasterConn)
-		}
-		return nil, errors.Wrap(err, "cancel connection failed")
+		return h.cancelConnection(fmt.Errorf("connection timed out"))
 	}
 }
 
@@ -221,4 +208,21 @@ func (h *HCI) SetAdvertisement(ad []byte, sr []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (h *HCI) cancelConnection(connErr error) (ble.Client, error) {
+	h.params.Lock()
+	err := h.Send(&h.params.connCancel, nil)
+	h.params.Unlock()
+
+	if err == nil {
+		// The pending connection was canceled successfully.
+		return nil, connErr
+	}
+	// The connection has been established, the cancel command
+	// failed with ErrDisallowed.
+	if err == ErrDisallowed {
+		return gatt.NewClient(<-h.chMasterConn)
+	}
+	return nil, errors.Wrap(err, "cancel connection failed")
 }

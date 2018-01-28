@@ -40,7 +40,8 @@ type Client struct {
 
 // Address returns the address of the client.
 func (p *Client) Address() ble.Addr {
-	p.RLock()
+
+	defer p.RLock()
 	defer p.RUnlock()
 	return p.conn.RemoteAddr()
 }
@@ -137,7 +138,8 @@ func (p *Client) DiscoverIncludedServices(ss []ble.UUID, s *ble.Service) ([]*ble
 // DiscoverCharacteristics finds all the characteristics within a service. [Vol 3, Part G, 4.6.1]
 // If filter is specified, only filtered characteristics are returned.
 func (p *Client) DiscoverCharacteristics(filter []ble.UUID, s *ble.Service) ([]*ble.Characteristic, error) {
-	p.Lock()
+
+	defer p.Lock()
 	defer p.Unlock()
 	start := s.Handle
 	var lastChar *ble.Characteristic
@@ -283,6 +285,7 @@ func (p *Client) ExchangeMTU(mtu int) (int, error) {
 func (p *Client) Subscribe(c *ble.Characteristic, ind bool, h ble.NotificationHandler) error {
 	p.Lock()
 	defer p.Unlock()
+
 	if c.CCCD == nil {
 		return fmt.Errorf("CCCD not found")
 	}

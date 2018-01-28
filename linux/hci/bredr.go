@@ -80,9 +80,10 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 	if err != nil {
 		return nil, ErrInvalidAddr
 	}
+	addr := [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
 
 	h.params.Lock()
-	h.params.connBREDRParams.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
+	h.params.connBREDRParams.BDADDR = addr
 	h.params.connBREDRParams.ClockOffset = clockOffset
 	h.params.connBREDRParams.PageScanRepetitionMode = pageScanRepetitionMode
 	h.params.connBREDRParams.AllowRoleSwitch = roleMaster
@@ -161,37 +162,27 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		return cli, err
 
 	case <-ctx.Done():
-		h.params.Lock()
-		h.params.connCancelBREDR.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
-		err = h.Send(&h.params.connCancelBREDR, nil)
-		h.params.Unlock()
-
-		if err == nil {
-			// The pending connection was canceled successfully.
-			return nil, ctx.Err()
-		}
-		// The connection has been established, the cancel command
-		// failed with ErrDisallowed.
-		if err == ErrDisallowed {
-			c := <-h.chMasterBREDRConn
-			c.Close()
-		}
-		return nil, errors.Wrap(err, "cancel connection failed")
+		return h.cancelConnectionBREDR(addr, ctx.Err())
 	case <-tmo:
-		h.params.Lock()
-		h.params.connCancelBREDR.BDADDR = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
-		err = h.Send(&h.params.connCancelBREDR, nil)
-		h.params.Unlock()
-
-		if err == nil {
-			// The pending connection was canceled successfully.
-			return nil, fmt.Errorf("connection timed out")
-		}
-		// The connection has been established, the cancel command
-		// failed with ErrDisallowed.
-		if err == ErrDisallowed {
-			return rfcomm.NewClient(ctx, <-h.chMasterBREDRConn, channel)
-		}
-		return nil, errors.Wrap(err, "cancel connection failed")
+		return h.cancelConnectionBREDR(addr, fmt.Errorf("connection timed out"))
 	}
+}
+
+func (h *HCI) cancelConnectionBREDR(addr [6]byte, connErr error) (ble.RFCOMMClient, error) {
+	h.params.Lock()
+	h.params.connCancelBREDR.BDADDR = addr
+	err := h.Send(&h.params.connCancelBREDR, nil)
+	h.params.Unlock()
+
+	if err == nil {
+		// The pending connection was canceled successfully.
+		return nil, connErr
+	}
+	// The connection has been established, the cancel command
+	// failed with ErrDisallowed.
+	if err == ErrDisallowed {
+		c := <-h.chMasterBREDRConn
+		c.Close()
+	}
+	return nil, errors.Wrap(err, "cancel connection failed")
 }
