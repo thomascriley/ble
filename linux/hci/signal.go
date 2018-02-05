@@ -29,6 +29,7 @@ func (s sigCmd) data() []byte { return s[4 : 4+s.len()] }
 // Signal ...
 func (c *Conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 
+	fmt.Printf("Signaling (request: %X, response: %X)\n", req.Code(), rsp.Code())
 	logger.Info("Signaling (request: %X, response: %X)\n", req.Code(), rsp.Code())
 
 	// The value of this timer is implementation-dependent but the minimum
@@ -58,7 +59,10 @@ func (c *Conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 	// add a buffer of 1 in case the response occurs before we have a chance
 	// to wait on sigSent
 	c.sigSent = make(chan []byte, 1)
-	defer close(c.sigSent)
+	defer func() {
+		close(c.sigSent)
+		fmt.Printf("Closed signal channel\n")
+	}()
 	if _, err := c.writePDU(buf.Bytes()); err != nil {
 		return err
 	}
@@ -117,40 +121,45 @@ func (c *Conn) handleSignal(p pdu) error {
 		return nil
 	}
 
+	fmt.Printf("Received signal %02X, %02X, %#v\n", s.code(), s.id(), s)
+
+	var err error
 	for len(s) > 0 {
 		// Check if it's a supported request.
 		switch s.code() {
+		case l2cap.SignalCommandReject:
+			err = c.handleCommandReject(s)
 		case l2cap.SignalConnectionRequest:
-			c.handleConnectionRequest(s)
+			err = c.handleConnectionRequest(s)
 		case l2cap.SignalConfigurationRequest:
-			c.handleConfigurationRequest(s)
+			err = c.handleConfigurationRequest(s)
 		case l2cap.SignalDisconnectRequest:
-			c.handleDisconnectRequest(s)
+			err = c.handleDisconnectRequest(s)
 		case l2cap.SignalEchoRequest:
-			c.handleEchoRequest(s)
+			err = c.handleEchoRequest(s)
 		case l2cap.SignalInformationRequest:
-			c.handleInformationRequest(s)
+			err = c.handleInformationRequest(s)
 		case l2cap.SignalCreateChannelRequest:
-			c.handleCreateChannelRequest(s)
+			err = c.handleCreateChannelRequest(s)
 		case l2cap.SignalMoveChannelRequest:
-			c.handleMoveChannelRequest(s)
+			err = c.handleMoveChannelRequest(s)
 		case l2cap.SignalConnectionParameterUpdateRequest:
-			c.handleConnectionParameterUpdateRequest(s)
+			err = c.handleConnectionParameterUpdateRequest(s)
 		case l2cap.SignalLECreditBasedConnectionRequest:
-			c.LECreditBasedConnectionRequest(s)
+			err = c.LECreditBasedConnectionRequest(s)
 		case l2cap.SignalLEFlowControlCredit:
-			c.LEFlowControlCredit(s)
+			err = c.LEFlowControlCredit(s)
 		case l2cap.SignalConnectionResponse:
-			c.handleConnectionResponse(s)
+			err = c.handleConnectionResponse(s)
 		case l2cap.SignalConfigurationResponse:
-			c.handleConfigurationResponse(s)
+			err = c.handleConfigurationResponse(s)
 		default:
 			// Check if it's a response to a sent command.
+			fmt.Printf("Received signal default %02X, %02X, %#v\n", s.code(), s.id(), s)
 			select {
 			case c.sigSent <- s:
 			default:
-
-				c.sendResponse(
+				_, err = c.sendResponse(
 					l2cap.SignalCommandReject,
 					s.id(),
 					&l2cap.CommandReject{
@@ -158,30 +167,52 @@ func (c *Conn) handleSignal(p pdu) error {
 					})
 			}
 		}
+		if err != nil {
+			return err
+		}
 		s = s[4+s.len():] // advance to next the packet.
-
 	}
 	return nil
 }
 
+// handleCommandReject ...
+func (c *Conn) handleCommandReject(s sigCmd) error {
+	var rej l2cap.CommandReject
+	if err := rej.Unmarshal(s.data()); err != nil {
+		return err
+	}
+
+	switch rej.Reason {
+	case l2cap.ReasonInvalidCID:
+		return fmt.Errorf("Command rejected: Invalid CID ( resp:[source: %04X, Destination: %04X], conn: [source:%02X, destination:%02X]) c", rej.SourceCID, rej.DestinationCID, c.SourceID, c.DestinationID)
+	case l2cap.ReasonCommandNotUnderstood:
+		return errors.New("Command rejected: Command not understood")
+	case l2cap.ReasonSignalingMTUExceeded:
+		return fmt.Errorf("Command rejected: Signaling MTU Exceeded (Actual: %d)", rej.ActualSigMTU)
+	default:
+		return errors.New("Command rejected for unknown reason")
+	}
+}
+
 // handleConnectionRequest ...
-func (c *Conn) handleConnectionRequest(s sigCmd) {
+func (c *Conn) handleConnectionRequest(s sigCmd) error {
 	var req l2cap.ConnectionRequest
 	if err := req.Unmarshal(s.data()); err != nil {
-		return
+		return err
 	}
 
 	// TODO: Add authentication, PSM check, etc
-	c.sendResponse(l2cap.SignalConnectionResponse, s.id(),
+	_, err := c.sendResponse(l2cap.SignalConnectionResponse, s.id(),
 		&l2cap.ConnectionResponse{
 			DestinationCID: c.SourceID,
 			SourceCID:      c.DestinationID,
 			Status:         l2cap.ConnectionStatusNoInfo,
 			Result:         l2cap.ConnectionResultSuccessful})
+	return err
 }
 
 // handleConfigurationRequest ...
-func (c *Conn) handleConfigurationRequest(s sigCmd) {
+func (c *Conn) handleConfigurationRequest(s sigCmd) error {
 	rsp := &l2cap.ConfigurationResponse{
 		SourceCID: c.DestinationID,
 		Flags:     0x0000,
@@ -190,10 +221,9 @@ func (c *Conn) handleConfigurationRequest(s sigCmd) {
 
 	var req l2cap.ConfigurationRequest
 	if err := req.Unmarshal(s.data()); err != nil {
-
 		rsp.Result = l2cap.ConfigurationResultFailureRejected
 		c.sendResponse(l2cap.SignalConfigurationResponse, s.id(), rsp)
-		return
+		return err
 	}
 
 	for _, option := range req.ConfigurationOptions {
@@ -207,28 +237,31 @@ func (c *Conn) handleConfigurationRequest(s sigCmd) {
 		}
 		rsp.ConfigurationOptions = append(rsp.ConfigurationOptions, option)
 	}
-	c.sendResponse(l2cap.SignalConfigurationResponse, s.id(), rsp)
+	if _, err := c.sendResponse(l2cap.SignalConfigurationResponse, s.id(), rsp); err != nil {
+		return err
+	}
 
 	select {
 	case <-c.cfgRequest:
 	default:
 		close(c.cfgRequest)
 	}
-	return
+	return nil
 }
 
 // handleEchoRequest ...
-func (c *Conn) handleEchoRequest(s sigCmd) {
+func (c *Conn) handleEchoRequest(s sigCmd) error {
 	// TODO: Allow user to supply own data response
-	c.sendResponse(l2cap.SignalEchoResponse, s.id(),
+	_, err := c.sendResponse(l2cap.SignalEchoResponse, s.id(),
 		&l2cap.EchoResponse{Data: 0x00})
+	return err
 }
 
 // handleInformationRequest ...
-func (c *Conn) handleInformationRequest(s sigCmd) {
+func (c *Conn) handleInformationRequest(s sigCmd) error {
 	var req l2cap.InformationRequest
 	if err := req.Unmarshal(s.data()); err != nil {
-		return
+		return err
 	}
 
 	rsp := &l2cap.InformationResponse{
@@ -245,105 +278,110 @@ func (c *Conn) handleInformationRequest(s sigCmd) {
 	default:
 		rsp.Result = l2cap.InfoResponseResultNotSupported
 	}
-	c.sendResponse(l2cap.SignalInformationResponse, s.id(), rsp)
+	_, err := c.sendResponse(l2cap.SignalInformationResponse, s.id(), rsp)
+	return err
 }
 
 // handleCreateChannelRequest ...
-func (c *Conn) handleCreateChannelRequest(s sigCmd) {
+func (c *Conn) handleCreateChannelRequest(s sigCmd) error {
 	var req l2cap.CreateChannelRequest
 	if err := req.Unmarshal(s.data()); err != nil {
-		return
+		return err
 	}
 
 	// TODO: Add authentication, PSM check, creating the channel, etc
-	c.sendResponse(l2cap.SignalCreateChannelResponse, s.id(),
+	_, err := c.sendResponse(l2cap.SignalCreateChannelResponse, s.id(),
 		&l2cap.CreateChannelResponse{
 			DestinationCID: c.SourceID,
 			SourceCID:      c.DestinationID,
 			Status:         l2cap.CreateChannelStatusNoInfo,
 			Result:         l2cap.CreateChannelResultSuccessful})
+	return err
 }
 
 // handleMoveChannelRequest ...
-func (c *Conn) handleMoveChannelRequest(s sigCmd) {
+func (c *Conn) handleMoveChannelRequest(s sigCmd) error {
 	var req l2cap.MoveChannelRequest
 	if err := req.Unmarshal(s.data()); err != nil {
-		return
+		return err
 	}
 
 	// TODO: check for enhanced retransmission mode or streaming mode to allow
 	// changing of the cids
-	c.sendResponse(l2cap.SignalMoveChannelResponse, s.id(),
+	_, err := c.sendResponse(l2cap.SignalMoveChannelResponse, s.id(),
 		&l2cap.MoveChannelResponse{
 			InitiatorCID: req.InitiatorCID,
 			Result:       l2cap.MoveChannelResultNotAllowed})
+	return err
 }
 
 // DisconnectRequest implements Disconnect Request (0x06) [Vol 3, Part A, 4.6].
-func (c *Conn) handleDisconnectRequest(s sigCmd) {
+func (c *Conn) handleDisconnectRequest(s sigCmd) error {
 	var req l2cap.DisconnectRequest
 	if err := req.Unmarshal(s.data()); err != nil {
-		return
+		return err
 	}
 
 	// Send Command Reject when the DCID is unrecognized.
 	if req.DestinationCID != cidLEAtt {
-		c.sendResponse(l2cap.SignalCommandReject, s.id(),
+		_, err := c.sendResponse(l2cap.SignalCommandReject, s.id(),
 			&l2cap.CommandReject{
 				Reason:         l2cap.ReasonInvalidCID,
 				SourceCID:      req.SourceCID,
 				DestinationCID: req.DestinationCID})
-		return
+		return err
 	}
 
 	// Silently discard the request if SCID failed to find the same match.
 	if req.SourceCID != cidLEAtt {
-		return
+		return nil
 	}
 
-	c.sendResponse(l2cap.SignalDisconnectResponse, s.id(),
+	_, err := c.sendResponse(l2cap.SignalDisconnectResponse, s.id(),
 		&l2cap.DisconnectResponse{
 			DestinationCID: req.DestinationCID,
 			SourceCID:      req.SourceCID})
+	return err
 }
 
 // handleConnectionResponse ...
-func (c *Conn) handleConnectionResponse(s sigCmd) {
+func (c *Conn) handleConnectionResponse(s sigCmd) error {
 	var rsp l2cap.ConnectionResponse
 	if err := rsp.Unmarshal(s.data()); err != nil {
-		return
+		return err
 	}
 
 	// wait for a non pending result
 	if rsp.Result == l2cap.ConnectionResultPending {
-		c.DestinationID = rsp.DestinationCID
 		switch rsp.Status {
 		case l2cap.ConnectionStatusAuthentication:
 		case l2cap.ConnectionStatusAuthorization:
 		case l2cap.ConnectionStatusNoInfo:
 		}
-		return
+		return nil
 	}
+
+	c.DestinationID = rsp.DestinationCID
 
 	select {
 	case c.sigSent <- s:
 	default:
 	}
+	return nil
 }
 
 // handleConfigurationResponse ...
-func (c *Conn) handleConfigurationResponse(s sigCmd) {
+func (c *Conn) handleConfigurationResponse(s sigCmd) error {
 	rsp := &l2cap.ConfigurationResponse{}
 	if err := rsp.Unmarshal(s.data()); err != nil {
 		logger.Error("Configuration Response Error: %s\n", err)
 		c.Close()
-		return
+		return err
 	}
 
 	// wait for a non pending result
 	if rsp.Result == l2cap.ConfigurationResultPending {
-
-		return
+		return nil
 	}
 
 	select {
@@ -351,10 +389,11 @@ func (c *Conn) handleConfigurationResponse(s sigCmd) {
 	default:
 		logger.Error("Configuration Response error: signal channel buffer full\n")
 	}
+	return nil
 }
 
 // ConnectionParameterUpdateRequest implements Connection Parameter Update Request (0x12) [Vol 3, Part A, 4.20].
-func (c *Conn) handleConnectionParameterUpdateRequest(s sigCmd) {
+func (c *Conn) handleConnectionParameterUpdateRequest(s sigCmd) error {
 	// This command shall only be sent from the LE slave device to the LE master
 	// device and only if one or more of the LE slave Controller, the LE master
 	// Controller, the LE slave Host and the LE master Host do not support the
@@ -363,22 +402,21 @@ func (c *Conn) handleConnectionParameterUpdateRequest(s sigCmd) {
 	// Request packet it shall respond with a Command Reject packet with reason
 	// 0x0000 (Command not understood).
 	if c.param.Role() != roleMaster {
-		c.sendResponse(
+		_, err := c.sendResponse(
 			l2cap.SignalCommandReject,
 			s.id(),
 			&l2cap.CommandReject{
 				Reason: 0x0000, // Command not understood.
 			})
-
-		return
+		return err
 	}
 	var req l2cap.ConnectionParameterUpdateRequest
 	if err := req.Unmarshal(s.data()); err != nil {
-		return
+		return err
 	}
 
 	// LE Connection Update (0x08|0x0013) [Vol 2, Part E, 7.8.18]
-	c.hci.Send(&cmd.LEConnectionUpdate{
+	return c.hci.Send(&cmd.LEConnectionUpdate{
 		ConnectionHandle:   c.param.ConnectionHandle(),
 		ConnIntervalMin:    req.IntervalMin,
 		ConnIntervalMax:    req.IntervalMax,
@@ -405,13 +443,15 @@ func (c *Conn) handleLEConnectionUpdateComplete(e evt.LEConnectionUpdateComplete
 }
 
 // LECreditBasedConnectionRequest ...
-func (c *Conn) LECreditBasedConnectionRequest(s sigCmd) {
+func (c *Conn) LECreditBasedConnectionRequest(s sigCmd) error {
 	// TODO:
+	return nil
 }
 
 // LEFlowControlCredit ...
-func (c *Conn) LEFlowControlCredit(s sigCmd) {
+func (c *Conn) LEFlowControlCredit(s sigCmd) error {
 	// TODO:
+	return nil
 }
 
 // InformationRequest [Vol 3, Part A, 4.10]

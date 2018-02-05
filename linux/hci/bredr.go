@@ -113,7 +113,9 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		if h.dynamicCID == 0xFFFF {
 			h.dynamicCID = cidDynamicStart
 		} else {
-			h.dynamicCID++
+			// this doesn't work for some reason, maybe they need to be reused after
+			// connection closes
+			//h.dynamicCID++
 		}
 
 		timeout := time.Duration(15 * time.Second)

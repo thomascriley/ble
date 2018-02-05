@@ -329,7 +329,7 @@ func (c *Conn) recombine() error {
 	cid := p.cid()
 	switch {
 	case cid == cidSignal:
-		c.handleSignal(p)
+		return c.handleSignal(p)
 	case cid == cidLEAtt:
 		c.chInPDU <- p
 	case cid == cidLESignal:
