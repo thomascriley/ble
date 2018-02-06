@@ -2,6 +2,7 @@ package linux
 
 import (
 	"log"
+	"time"
 
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
@@ -61,8 +62,14 @@ func NewDevice() (*Device, error) {
 
 // Device ...
 type Device struct {
-	HCI    *hci.HCI
-	Server *gatt.Server
+	HCI           *hci.HCI
+	Server        *gatt.Server
+	scanCtx       context.Context
+	scanCancel    context.CancelFunc
+	inquireCtx    context.Context
+	inquireCancel context.CancelFunc
+	numResponses  int
+	allowDup      bool
 }
 
 // AddService adds a service to database.
@@ -146,16 +153,99 @@ func (d *Device) Scan(ctx context.Context, allowDup bool, h ble.AdvHandler) erro
 	if err := d.HCI.Scan(allowDup); err != nil {
 		return err
 	}
-	<-ctx.Done()
+	d.allowDup = allowDup
+	d.scanCtx, d.scanCancel = context.WithCancel(ctx)
+	defer d.scanCancel()
+	<-d.scanCtx.Done()
 	d.HCI.StopScanning()
 	return ctx.Err()
+}
+
+// Inquire starts inquiring for bluetooth devices broadcasting using br/edr
+func (d *Device) Inquire(ctx context.Context, numResponses int, h ble.InqHandler) error {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return errors.New("BR/EDR scanning requires a deadline be set")
+	}
+	length := int(deadline.Sub(time.Now()).Seconds() / 1.28)
+	if err := d.HCI.SetInqHandler(h); err != nil {
+		return err
+	}
+	if err := d.HCI.Inquire(length, numResponses); err != nil {
+		return err
+	}
+	d.numResponses = numResponses
+	d.inquireCtx, d.inquireCancel = context.WithCancel(ctx)
+	defer d.inquireCancel()
+	<-d.inquireCtx.Done()
+	d.HCI.StopInquiry()
+	return ctx.Err()
+}
+
+// RequestRemoteName ...
+func (d *Device) RequestRemoteName(a ble.Addr) (string, error) {
+	return d.HCI.RequestRemoteName(a)
+}
+
+func (d *Device) tempStop() {
+	if d.scanCtx != nil {
+		select {
+		case <-d.scanCtx.Done():
+		default:
+			d.HCI.StopScanning()
+		}
+	}
+	if d.inquireCtx != nil {
+		select {
+		case <-d.inquireCtx.Done():
+		default:
+			d.HCI.StopInquiry()
+		}
+	}
+}
+
+func (d *Device) tempStart() {
+	if d.scanCtx != nil {
+		select {
+		case <-d.scanCtx.Done():
+		default:
+			if err := d.HCI.Scan(d.allowDup); err != nil {
+				d.scanCancel()
+			}
+		}
+	}
+	if d.inquireCtx != nil {
+		select {
+		case <-d.inquireCtx.Done():
+		default:
+			deadline, _ := d.inquireCtx.Deadline()
+			length := int(deadline.Sub(time.Now()).Seconds() / 1.28)
+			if err := d.HCI.Inquire(length, d.numResponses); err != nil {
+				d.inquireCancel()
+			}
+		}
+	}
 }
 
 // Dial ...
 func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	// d.HCI.Dial is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
+	// stopping the scan will improve ability to connect
+	d.tempStop()
 	cln, err := d.HCI.Dial(ctx, a)
+	d.tempStart()
+	return cln, errors.Wrap(err, "can't dial")
+}
+
+// DialRFCOMM ...
+// TODO: implement SDP to determine RFCOMM channel number
+func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8, channel uint8) (ble.RFCOMMClient, error) {
+	// d.HCI.DialRFCOMM is a blocking call, although most of time it should return immediately.
+	// But in case passing wrong device address or the device went non-connectable, it blocks.
+	d.tempStop()
+	cln, err := d.HCI.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode, channel)
+	d.tempStart()
 	return cln, errors.Wrap(err, "can't dial")
 }
 

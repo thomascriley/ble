@@ -7,10 +7,10 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/pkg/errors"
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/adv"
 	"github.com/thomascriley/ble/linux/gatt"
-	"github.com/pkg/errors"
 )
 
 // Addr ...
@@ -29,8 +29,7 @@ func (h *HCI) Scan(allowDup bool) error {
 		h.params.scanEnable.FilterDuplicates = 0
 	}
 	h.params.scanEnable.LEScanEnable = 1
-	h.adHist = make([]*Advertisement, 128)
-	h.adLast = 0
+	h.adHist = make(map[string]*Advertisement, 128)
 	return h.Send(&h.params.scanEnable, nil)
 }
 
@@ -154,36 +153,34 @@ func (h *HCI) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	if err != nil {
 		return nil, ErrInvalidAddr
 	}
+
+	h.params.Lock()
 	h.params.connParams.PeerAddress = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
 	if _, ok := a.(RandomAddress); ok {
 		h.params.connParams.PeerAddressType = 1
 	}
-	if err = h.Send(&h.params.connParams, nil); err != nil {
+	err = h.Send(&h.params.connParams, nil)
+	h.params.Unlock()
+
+	if err != nil {
 		return nil, err
 	}
+
 	var tmo <-chan time.Time
 	if h.dialerTmo != time.Duration(0) {
 		tmo = time.After(h.dialerTmo)
 	}
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return h.cancelConnection(ctx.Err())
 	case <-h.done:
 		return nil, h.err
 	case c := <-h.chMasterConn:
+		c.SourceID = cidLEAtt
+		c.DestinationID = cidLEAtt
 		return gatt.NewClient(c)
 	case <-tmo:
-		err := h.Send(&h.params.connCancel, nil)
-		if err == nil {
-			// The pending connection was canceled successfully.
-			return nil, fmt.Errorf("connection timed out")
-		}
-		// The connection has been established, the cancel command
-		// failed with ErrDisallowed.
-		if err == ErrDisallowed {
-			return gatt.NewClient(<-h.chMasterConn)
-		}
-		return nil, errors.Wrap(err, "cancel connection failed")
+		return h.cancelConnection(fmt.Errorf("connection timed out"))
 	}
 }
 
@@ -211,4 +208,21 @@ func (h *HCI) SetAdvertisement(ad []byte, sr []byte) error {
 		return err
 	}
 	return nil
+}
+
+func (h *HCI) cancelConnection(connErr error) (ble.Client, error) {
+	h.params.Lock()
+	err := h.Send(&h.params.connCancel, nil)
+	h.params.Unlock()
+
+	if err == nil {
+		// The pending connection was canceled successfully.
+		return nil, connErr
+	}
+	// The connection has been established, the cancel command
+	// failed with ErrDisallowed.
+	if err == ErrDisallowed {
+		return gatt.NewClient(<-h.chMasterConn)
+	}
+	return nil, errors.Wrap(err, "cancel connection failed")
 }

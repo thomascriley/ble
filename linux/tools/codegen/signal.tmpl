@@ -3,9 +3,11 @@ const Signal{{esc .Name}} = {{.Code}}
 // {{esc .Name}} implements {{.Name}} ({{.Code}}) [{{.Spec}}].
 type {{esc .Name}} struct {
 {{range .Fields}}{{range $k, $v := .}}{{printf "\t%s\t%s\n" (esc $k) $v}}{{end}}{{end}}}
+
 // Code returns the event code of the command.
 func (s {{esc .Name}}) Code() int { return {{.Code}} }
 
+{{if .DefaultUnmarshaller}}
 // Marshal serializes the command parameters into binary form.
 func (s *{{esc .Name}}) Marshal() []byte {
 	buf:= bytes.NewBuffer(make([]byte, 0))
@@ -17,3 +19,4 @@ func (s *{{esc .Name}}) Marshal() []byte {
 func (s *{{esc .Name}}) Unmarshal(b []byte) error {
 	return binary.Read(bytes.NewBuffer(b), binary.LittleEndian, s)
 }
+{{end}}

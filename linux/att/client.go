@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thomascriley/ble"
 	"github.com/pkg/errors"
+	"github.com/thomascriley/ble"
 )
 
 // NotificationHandler handles notification or indication.
@@ -37,6 +37,10 @@ func NewClient(l2c ble.Conn, h NotificationHandler) *Client {
 	}
 	c.chTxBuf <- make([]byte, l2c.TxMTU(), l2c.TxMTU())
 	return c
+}
+
+func (c *Client) Connection() ble.Conn {
+	return c.l2c
 }
 
 // ExchangeMTU informs the server of the client’s maximum receive MTU size and
@@ -492,7 +496,7 @@ func (c *Client) sendReq(b []byte) (rsp []byte, err error) {
 			}
 			// Sometimes when we connect to an Apple device, it sends
 			// ATT requests asynchronously to us. // In this case, we
-			// returns an ErrReqNotSupp response, and continue to wait
+			// return an ErrReqNotSupp response, and continue to wait
 			// the response to our request.
 			errRsp := newErrorResponse(rsp[0], 0x0000, ble.ErrReqNotSupp)
 			logger.Debug("client", "req", fmt.Sprintf("% X", b))
@@ -537,7 +541,6 @@ func (c *Client) Loop() {
 
 		b := make([]byte, n)
 		copy(b, c.rxBuf)
-
 		if (b[0] != HandleValueNotificationCode) && (b[0] != HandleValueIndicationCode) {
 			c.rspc <- b
 			continue

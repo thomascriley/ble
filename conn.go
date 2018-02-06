@@ -8,7 +8,10 @@ import (
 
 // Conn implements a L2CAP connection.
 type Conn interface {
-	io.ReadWriteCloser
+	io.WriteCloser
+
+	// Read reads service data unit from the connection
+	Read([]byte) (n int, err error)
 
 	// Context returns the context that is used by this Conn.
 	Context() context.Context

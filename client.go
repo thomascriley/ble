@@ -12,6 +12,9 @@ type Client interface {
 	// Profile returns discovered profile.
 	Profile() *Profile
 
+	// Connection returns the L2CAP connection
+	Connection() Conn
+
 	// DiscoverProfile discovers the whole hierachy of a server.
 	DiscoverProfile(force bool) (*Profile, error)
 

@@ -1,17 +1,19 @@
 package hci
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/hci/cmd"
 	"github.com/thomascriley/ble/linux/hci/evt"
 	"github.com/thomascriley/ble/linux/hci/socket"
-	"github.com/pkg/errors"
+	"github.com/thomascriley/ble/linux/smp"
 )
 
 // Command ...
@@ -33,6 +35,11 @@ type pkt struct {
 	done chan []byte
 }
 
+type nameHandlers struct {
+	sync.Mutex
+	handlers map[ble.Addr]chan *nameEvent
+}
+
 // NewHCI returns a hci device.
 func NewHCI(opts ...Option) (*HCI, error) {
 	h := &HCI{
@@ -41,14 +48,20 @@ func NewHCI(opts ...Option) (*HCI, error) {
 		chCmdPkt:  make(chan *pkt),
 		chCmdBufs: make(chan []byte, 8),
 		sent:      make(map[int]*pkt),
+		sentMutex: &sync.RWMutex{},
 
-		evth: map[int]handlerFn{},
-		subh: map[int]handlerFn{},
+		evth:     map[int]handlerFn{},
+		evtMutex: &sync.RWMutex{},
+		subh:     map[int]handlerFn{},
+		subMutex: &sync.RWMutex{},
 
-		muConns:      &sync.Mutex{},
-		conns:        make(map[uint16]*Conn),
-		chMasterConn: make(chan *Conn),
-		chSlaveConn:  make(chan *Conn),
+		dynamicCID: cidDynamicStart,
+
+		muConns:           &sync.Mutex{},
+		conns:             make(map[uint16]*Conn),
+		chMasterConn:      make(chan *Conn),
+		chMasterBREDRConn: make(chan *Conn),
+		chSlaveConn:       make(chan *Conn),
 
 		done: make(chan bool),
 	}
@@ -73,10 +86,13 @@ type HCI struct {
 	chCmdPkt  chan *pkt
 	chCmdBufs chan []byte
 	sent      map[int]*pkt
+	sentMutex *sync.RWMutex
 
 	// evtHub
-	evth map[int]handlerFn
-	subh map[int]handlerFn
+	evth     map[int]handlerFn
+	evtMutex *sync.RWMutex
+	subh     map[int]handlerFn
+	subMutex *sync.RWMutex
 
 	// aclHandler
 	bufSize int
@@ -86,29 +102,41 @@ type HCI struct {
 	addr    net.HardwareAddr
 	txPwrLv int
 
-	// adHist and adLast track the history of past scannable advertising packets.
+	// adHist tracks the history of past scannable advertising packets.
 	// Controller delivers AD(Advertising Data) and SR(Scan Response) separately
 	// through HCI. Upon recieving an AD, no matter it's scannable or not, we
-	// pass a Advertisment (AD only) to advHandler immediately.
+	// pass a Advertisement (AD only) to advHandler immediately.
 	// Upon recieving a SR, we search the AD history for the AD from the same
-	// device, and pass the Advertisiement (AD+SR) to advHandler.
+	// device, and pass the Advertisement (AD+SR) to advHandler.
 	// The adHist and adLast are allocated in the Scan().
 	advHandler ble.AdvHandler
-	adHist     []*Advertisement
-	adLast     int
+	adHist     map[string]*Advertisement
+
+	// Inquiry scan handler
+	inqHandler ble.InqHandler
+
+	// Outstanding Remote Name Requests
+	nameHandlers *nameHandlers
+
+	// dynamicCID pointer to next available channel for LMP connections for BR/EDR
+	dynamicCID uint16
 
 	// Host to Controller Data Flow Control Packet-based Data flow control for LE-U [Vol 2, Part E, 4.1.1]
 	// Minimum 27 bytes. 4 bytes of L2CAP Header, and 23 bytes Payload from upper layer (ATT)
 	pool *Pool
 
 	// L2CAP connections
-	muConns      *sync.Mutex
-	conns        map[uint16]*Conn
-	chMasterConn chan *Conn // Dial returns master connections.
-	chSlaveConn  chan *Conn // Peripheral accept slave connections.
+	muConns           *sync.Mutex
+	conns             map[uint16]*Conn
+	chMasterConn      chan *Conn // Dial returns master BLE connections.
+	chMasterBREDRConn chan *Conn // DialBREDR returns master BREDR connections.
+	chSlaveConn       chan *Conn // Peripheral accept slave connections.
 
 	dialerTmo   time.Duration
 	listenerTmo time.Duration
+
+	// SMP capabilities
+	smpCapabilites smp.Capabilities
 
 	err  error
 	done chan bool
@@ -116,16 +144,15 @@ type HCI struct {
 
 // Init ...
 func (h *HCI) Init() error {
+
+	h.evtMutex.Lock()
+
 	h.evth[0x3E] = h.handleLEMeta
 	h.evth[evt.CommandCompleteCode] = h.handleCommandComplete
 	h.evth[evt.CommandStatusCode] = h.handleCommandStatus
 	h.evth[evt.DisconnectionCompleteCode] = h.handleDisconnectionComplete
 	h.evth[evt.NumberOfCompletedPacketsCode] = h.handleNumberOfCompletedPackets
 
-	h.subh[evt.LEAdvertisingReportSubCode] = h.handleLEAdvertisingReport
-	h.subh[evt.LEConnectionCompleteSubCode] = h.handleLEConnectionComplete
-	h.subh[evt.LEConnectionUpdateCompleteSubCode] = h.handleLEConnectionUpdateComplete
-	h.subh[evt.LELongTermKeyRequestSubCode] = h.handleLELongTermKeyRequest
 	// evt.EncryptionChangeCode:                     todo),
 	// evt.ReadRemoteVersionInformationCompleteCode: todo),
 	// evt.HardwareErrorCode:                        todo),
@@ -134,6 +161,29 @@ func (h *HCI) Init() error {
 	// evt.AuthenticatedPayloadTimeoutExpiredCode:   todo),
 	// evt.LEReadRemoteUsedFeaturesCompleteSubCode:   todo),
 	// evt.LERemoteConnectionParameterRequestSubCode: todo),
+
+	// BD/EDR
+	h.evth[evt.InquiryCompleteCode] = h.handleInquiryComplete
+	h.evth[evt.InquiryResultCode] = h.handleInquiryResult
+	h.evth[evt.InquiryResultwithRSSICode] = h.handleInquiryWithRSSI
+	h.evth[evt.ExtendedInquiryCode] = h.handleExtendedInquiry
+	h.evth[evt.ConnectionCompleteCode] = h.handleConnectionComplete
+	h.evth[evt.PageScanRepetitionModeChangeCode] = h.handlePageScanRepetitionModeChange
+	h.evth[evt.ReadRemoteSupportedFeaturesCompleteCode] = h.handleReadRemoteSupportedFeaturesComplete
+	h.evth[evt.MaxSlotsChangeCode] = h.handleMaxSlotsChange
+
+	h.evtMutex.Unlock()
+
+	h.subMutex.Lock()
+
+	h.subh[evt.LEAdvertisingReportSubCode] = h.handleLEAdvertisingReport
+	h.subh[evt.LEConnectionCompleteSubCode] = h.handleLEConnectionComplete
+	h.subh[evt.LEConnectionUpdateCompleteSubCode] = h.handleLEConnectionUpdateComplete
+	h.subh[evt.LELongTermKeyRequestSubCode] = h.handleLELongTermKeyRequest
+
+	h.subMutex.Unlock()
+
+	h.nameHandlers = &nameHandlers{handlers: make(map[ble.Addr]chan *nameEvent, 0)}
 
 	skt, err := socket.NewSocket(h.id)
 	if err != nil {
@@ -245,7 +295,9 @@ func (h *HCI) send(c Command) ([]byte, error) {
 		h.close(fmt.Errorf("hci: failed to marshal cmd"))
 	}
 
-	h.sent[c.OpCode()] = p // TODO: lock
+	h.sentMutex.Lock()
+	h.sent[c.OpCode()] = p
+	h.sentMutex.Unlock()
 	if n, err := h.skt.Write(b[:4+c.Len()]); err != nil {
 		h.close(fmt.Errorf("hci: failed to send cmd"))
 	} else if n != 4+c.Len() {
@@ -258,6 +310,27 @@ func (h *HCI) send(c Command) ([]byte, error) {
 	case b := <-p.done:
 		return b, nil
 	}
+}
+
+func (h *HCI) sentPkt(code int) (*pkt, bool) {
+	h.sentMutex.RLock()
+	defer h.sentMutex.RUnlock()
+	p, ok := h.sent[code]
+	return p, ok
+}
+
+func (h *HCI) evtHandler(code int) (handlerFn, bool) {
+	h.evtMutex.RLock()
+	defer h.evtMutex.RUnlock()
+	evth, ok := h.evth[code]
+	return evth, ok
+}
+
+func (h *HCI) subHandler(code int) (handlerFn, bool) {
+	h.subMutex.RLock()
+	defer h.subMutex.RUnlock()
+	subh, ok := h.subh[code]
+	return subh, ok
 }
 
 func (h *HCI) sktLoop() {
@@ -303,6 +376,7 @@ func (h *HCI) handlePkt(b []byte) error {
 }
 
 func (h *HCI) handleACL(b []byte) error {
+
 	h.muConns.Lock()
 	c, ok := h.conns[packet(b).handle()]
 	h.muConns.Unlock()
@@ -319,14 +393,15 @@ func (h *HCI) handleEvt(b []byte) error {
 		return fmt.Errorf("invalid event packet: % X", b)
 	}
 	if code == evt.CommandCompleteCode || code == evt.CommandStatusCode {
-		if f := h.evth[code]; f != nil {
+		if f, found := h.evtHandler(code); found {
 			return f(b[2:])
 		}
 	}
 	if plen != len(b[2:]) {
 		h.err = fmt.Errorf("invalid event packet: % X", b)
 	}
-	if f := h.evth[code]; f != nil {
+
+	if f, found := h.evtHandler(code); found {
 		h.err = f(b[2:])
 		return nil
 	}
@@ -335,7 +410,7 @@ func (h *HCI) handleEvt(b []byte) error {
 
 func (h *HCI) handleLEMeta(b []byte) error {
 	subcode := int(b[0])
-	if f := h.subh[subcode]; f != nil {
+	if f, found := h.subHandler(subcode); found {
 		return f(b)
 	}
 	return fmt.Errorf("unsupported LE event: % X", b)
@@ -354,33 +429,20 @@ func (h *HCI) handleLEAdvertisingReport(b []byte) error {
 			fallthrough
 		case evtTypAdvScanInd:
 			a = newAdvertisement(e, i)
-			h.adHist[h.adLast] = a
-			h.adLast++
-			if h.adLast == len(h.adHist) {
-				h.adLast = 0
-			}
+			h.adHist[a.Address().String()] = a
 		case evtTypScanRsp:
 			sr := newAdvertisement(e, i)
-			for idx := h.adLast - 1; idx != h.adLast; idx-- {
-				if idx == -1 {
-					idx = len(h.adHist) - 1
-				}
-				if h.adHist[idx] == nil {
-					break
-				}
-				if h.adHist[idx].Address().String() == sr.Address().String() {
-					h.adHist[idx].setScanResponse(sr)
-					a = h.adHist[idx]
-					break
-				}
-			}
+			a = h.adHist[sr.Address().String()]
+
 			// Got a SR without having recieved an associated AD before?
 			if a == nil {
 				return fmt.Errorf("recieved scan response %s with no associated Advertising Data packet", sr.Address())
 			}
+			a.setScanResponse(sr)
 		default:
 			a = newAdvertisement(e, i)
 		}
+
 		go h.advHandler(a)
 	}
 
@@ -398,7 +460,8 @@ func (h *HCI) handleCommandComplete(b []byte) error {
 		h.chCmdBufs = make(chan []byte, 8)
 		return nil
 	}
-	p, found := h.sent[int(e.CommandOpcode())]
+
+	p, found := h.sentPkt(int(e.CommandOpcode()))
 	if !found {
 		return fmt.Errorf("can't find the cmd for CommandCompleteEP: % X", e)
 	}
@@ -412,7 +475,7 @@ func (h *HCI) handleCommandStatus(b []byte) error {
 		h.chCmdBufs <- make([]byte, 64)
 	}
 
-	p, found := h.sent[int(e.CommandOpcode())]
+	p, found := h.sentPkt(int(e.CommandOpcode()))
 	if !found {
 		return fmt.Errorf("can't find the cmd for CommandStatusEP: % X", e)
 	}
@@ -428,6 +491,7 @@ func (h *HCI) handleLEConnectionComplete(b []byte) error {
 	h.muConns.Unlock()
 	if e.Role() == roleMaster {
 		if e.Status() == 0x00 {
+
 			h.chMasterConn <- c
 			return nil
 		}
@@ -458,7 +522,12 @@ func (h *HCI) handleLEConnectionComplete(b []byte) error {
 }
 
 func (h *HCI) handleLEConnectionUpdateComplete(b []byte) error {
-	return nil
+	e := evt.LEConnectionUpdateComplete(b)
+	c, ok := h.conns[e.ConnectionHandle()]
+	if !ok {
+		return fmt.Errorf("le connection update complete has invalid connection handle %04X", e.ConnectionHandle())
+	}
+	return c.handleLEConnectionUpdateComplete(e)
 }
 
 func (h *HCI) handleDisconnectionComplete(b []byte) error {
@@ -467,10 +536,10 @@ func (h *HCI) handleDisconnectionComplete(b []byte) error {
 	c, found := h.conns[e.ConnectionHandle()]
 	delete(h.conns, e.ConnectionHandle())
 	h.muConns.Unlock()
+
 	if !found {
 		return fmt.Errorf("disconnecting an invalid handle %04X", e.ConnectionHandle())
 	}
-	close(c.chInPkt)
 	if c.param.Role() == roleSlave {
 		// Re-enable advertising, if it was advertising. Refer to the
 		// handleLEConnectionComplete() for details.
@@ -485,6 +554,7 @@ func (h *HCI) handleDisconnectionComplete(b []byte) error {
 		// remote peripheral disconnected
 		close(c.chDone)
 	}
+	close(c.chInPkt)
 	// When a connection disconnects, all the sent packets and weren't acked yet
 	// will be recycled. [Vol2, Part E 4.1.1]
 	c.txBuffer.PutAll()
@@ -514,4 +584,122 @@ func (h *HCI) handleLELongTermKeyRequest(b []byte) error {
 	return h.Send(&cmd.LELongTermKeyRequestNegativeReply{
 		ConnectionHandle: e.ConnectionHandle(),
 	}, nil)
+}
+
+func (h *HCI) handleInquiryComplete(b []byte) error {
+	return nil
+}
+
+func (h *HCI) handleExtendedInquiry(b []byte) error {
+	if h.inqHandler == nil {
+		return nil
+	}
+	// always a single response [Vol2, 7.7.38]
+	go h.inqHandler(newInquiry(evt.ExtendedInquiry(b), 0))
+
+	return nil
+}
+
+func (h *HCI) handleInquiryResult(b []byte) error {
+	if h.inqHandler == nil {
+		return nil
+	}
+
+	e := evt.InquiryResult(b)
+	for i := 0; i < int(e.NumResponses()); i++ {
+		go h.inqHandler(newInquiry(e, i))
+	}
+
+	return nil
+}
+
+func (h *HCI) handleInquiryWithRSSI(b []byte) error {
+	if h.inqHandler == nil {
+		return nil
+	}
+
+	e := evt.InquiryResultwithRSSI(b)
+	for i := 0; i < int(e.NumResponses()); i++ {
+		go h.inqHandler(newInquiry(e, i))
+	}
+
+	return nil
+}
+
+func (h *HCI) handleConnectionComplete(b []byte) error {
+
+	e := evt.ConnectionComplete(b)
+	c := newConn(h, e)
+
+	h.muConns.Lock()
+	h.conns[e.ConnectionHandle()] = c
+	h.muConns.Unlock()
+
+	if e.Status() == 0x00 {
+		h.chMasterBREDRConn <- c
+		return nil
+	}
+	if ErrCommand(e.Status()) == ErrConnID {
+		// The connection was canceled successfully.
+		return nil
+	}
+	return nil
+}
+
+func (h *HCI) handleReadRemoteSupportedFeaturesComplete(b []byte) error {
+	e := evt.ReadRemoteSupportedFeaturesComplete(b)
+	if e.Status() == 0x00 {
+		h.muConns.Lock()
+		h.conns[e.ConnectionHandle()].lmpFeatures = e.LMPFeatures()
+		h.muConns.Unlock()
+	}
+
+	p, found := h.sentPkt(int(evt.ReadRemoteSupportedFeaturesCompleteCode))
+	if !found {
+		return fmt.Errorf("can't find the cmd for CommandReadRemoteSupportedFeatureEP: % X", e)
+	}
+	p.done <- []byte{e.Status()}
+	return nil
+}
+
+func (h *HCI) handlePageScanRepetitionModeChange(b []byte) error {
+	//e := evt.PageScanRepetitionModeChange(b)
+
+	// remote controller has successfully changed the page
+	// scan repetition mode [ Vol 2, 3.7, Table 3.8 ]
+	return nil
+}
+
+func (h *HCI) handleMaxSlotsChange(b []byte) error {
+	//e := evt.MaxSlotsChange(b)
+
+	// remote controller has successfully changed the page
+	// scan repetition mode [ Vol 2, 3.7, Table 3.8 ]
+	return nil
+}
+
+// [ Vol 2, 7.7.7 ]
+func (h *HCI) handleReadRemoteNameRequestCompleteEvent(b []byte) error {
+	e := evt.RemoteNameRequestComplete(b)
+
+	nameEvent := &nameEvent{}
+	if e.Status() == 0x00 {
+		name := e.RemoteName()
+		i := bytes.IndexByte(name[:], 0x00)
+		if i == -1 {
+			i = len(name)
+		}
+		nameEvent.name = string(name[0:i])
+	} else {
+		nameEvent.err = fmt.Errorf("The remote name request command failed: %X", e.Status())
+	}
+
+	h.nameHandlers.Lock()
+	defer h.nameHandlers.Unlock()
+	ch, ok := h.nameHandlers.handlers[ble.NewAddr(fmt.Sprintf("%X", e.BDADDR()))]
+	if !ok {
+		return fmt.Errorf("Received remote name request complete from unknown address: %X", e.BDADDR())
+	}
+	ch <- nameEvent
+	return nil
 }

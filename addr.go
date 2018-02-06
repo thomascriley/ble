@@ -1,11 +1,14 @@
 package ble
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Addr represents a network end point address.
 // It's MAC address on Linux or Device UUID on OS X.
 type Addr interface {
-	String() string
+	fmt.Stringer
 }
 
 // NewAddr creates an Addr from string

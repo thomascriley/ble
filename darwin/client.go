@@ -1,7 +1,9 @@
 package darwin
 
 import (
+	"errors"
 	"fmt"
+
 
 	"github.com/thomascriley/ble"
 	"github.com/raff/goble/xpc"
@@ -40,6 +42,10 @@ func (cln *Client) Profile() *ble.Profile {
 	return cln.profile
 }
 
+func (cln *Client) Connection() ble.Conn {
+	return cln.conn
+}
+
 // DiscoverProfile discovers the whole hierachy of a server.
 func (cln *Client) DiscoverProfile(force bool) (*ble.Profile, error) {
 	if cln.profile != nil && !force {
@@ -76,13 +82,15 @@ func (cln *Client) DiscoverServices(ss []ble.UUID) ([]*ble.Service, error) {
 		return nil, rsp.err()
 	}
 	svcs := []*ble.Service{}
-	for _, xss := range rsp.services() {
-		xs := msg(xss.(xpc.Dict))
-		svcs = append(svcs, &ble.Service{
-			UUID:      ble.MustParse(xs.uuid()),
-			Handle:    uint16(xs.serviceStartHandle()),
-			EndHandle: uint16(xs.serviceEndHandle()),
-		})
+	if s := rsp.services(); s != nil {
+		for _, xss := range s {
+			xs := msg(xss.(xpc.Dict))
+			svcs = append(svcs, &ble.Service{
+				UUID:      ble.MustParse(xs.uuid()),
+				Handle:    uint16(xs.serviceStartHandle()),
+				EndHandle: uint16(xs.serviceEndHandle()),
+			})
+		}
 	}
 	if cln.profile == nil {
 		cln.profile = &ble.Profile{Services: svcs}
@@ -211,6 +219,16 @@ func (cln *Client) ReadRSSI() int {
 		return 0
 	}
 	return rsp.rssi()
+}
+
+// Read reads Point to Point bytes from the device
+func (cln *Client) Read() ([]byte, error) {
+	return nil, errors.New("Not implemented")
+}
+
+// Read reads Point to Point bytes from the device
+func (cln *Client) Write(v []byte) error {
+	return errors.New("Not implemented")
 }
 
 // ExchangeMTU set the ATT_MTU to the maximum possible value that can be

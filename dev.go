@@ -37,6 +37,15 @@ type Device interface {
 	// Scan starts scanning. Duplicated advertisements will be filtered out if allowDup is set to false.
 	Scan(ctx context.Context, allowDup bool, h AdvHandler) error
 
+	// Inquire starts a BR/EDR scan
+	Inquire(ctx context.Context, numResponses int, h InqHandler) error
+
+	// RequestRemoteName queries the remote BR/EDR device for its name
+	RequestRemoteName(a Addr) (string, error)
+
 	// Dial ...
 	Dial(ctx context.Context, a Addr) (Client, error)
+
+	// Dial
+	DialRFCOMM(ctx context.Context, a Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (RFCOMMClient, error)
 }

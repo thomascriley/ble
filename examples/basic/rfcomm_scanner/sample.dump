@@ -1,0 +1,292 @@
+< HCI Command: Inquiry (0x01|0x0001) plen 5
+    lap 0x9e8b33 len 7 num 255
+> HCI Event: Command Status (0x0f) plen 4
+    Inquiry (0x01|0x0001) status 0x00 ncmd 1
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -74
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -81
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -79
+> HCI Event: Extended Inquiry Result (0x2f) plen 255
+    bdaddr 64:76:BA:8D:15:71 mode 1 clkoffset 0x4eea class 0x3a010c rssi -68
+    Complete local name: 'CHHE439'
+    Complete service classes: 0x1101 0x1112 0x111f 0x1116 0x110a 0x110c 0x1117
+    Unknown type 0xff with 16 bytes data
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -70
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -69
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -70
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -67
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -75
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -67
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -81
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -73
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -76
+> HCI Event: Extended Inquiry Result (0x2f) plen 255
+    bdaddr 64:76:BA:8D:15:71 mode 1 clkoffset 0x4ef6 class 0x3a010c rssi -83
+    Complete local name: 'CHHE439'
+    Complete service classes: 0x1101 0x1112 0x111f 0x1116 0x110a 0x110c 0x1117
+    Unknown type 0xff with 16 bytes data
+> HCI Event: Extended Inquiry Result (0x2f) plen 255
+    bdaddr 64:76:BA:8D:15:71 mode 1 clkoffset 0x4ef6 class 0x3a010c rssi -71
+    Complete local name: 'CHHE439'
+    Complete service classes: 0x1101 0x1112 0x111f 0x1116 0x110a 0x110c 0x1117
+    Unknown type 0xff with 16 bytes data
+> HCI Event: Extended Inquiry Result (0x2f) plen 255
+    bdaddr 64:76:BA:8D:15:71 mode 1 clkoffset 0x4ef6 class 0x3a010c rssi -69
+    Complete local name: 'CHHE439'
+    Complete service classes: 0x1101 0x1112 0x111f 0x1116 0x110a 0x110c 0x1117
+    Unknown type 0xff with 16 bytes data
+> HCI Event: Extended Inquiry Result (0x2f) plen 255
+    bdaddr 64:76:BA:8D:15:71 mode 1 clkoffset 0x4ef8 class 0x3a010c rssi -80
+    Complete local name: 'CHHE439'
+    Complete service classes: 0x1101 0x1112 0x111f 0x1116 0x110a 0x110c 0x1117
+    Unknown type 0xff with 16 bytes data
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -73
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -71
+> HCI Event: Inquiry Result with RSSI (0x22) plen 15
+    bdaddr 00:A0:96:14:18:5B mode 1 clkoffset 0x023e class 0x000000 rssi -81
+> HCI Event: Inquiry Complete (0x01) plen 1
+    status 0x00
+< HCI Command: Create Connection (0x01|0x0005) plen 13
+    bdaddr 00:A0:96:14:18:5B ptype 0xcc18 rswitch 0x01 clkoffset 0x023e (valid)
+    Packet type: DM1 DM3 DM5 DH1 DH3 DH5
+> HCI Event: Command Status (0x0f) plen 4
+    Create Connection (0x01|0x0005) status 0x00 ncmd 1
+> HCI Event: Connect Complete (0x03) plen 11
+    status 0x00 handle 1 bdaddr 00:A0:96:14:18:5B type ACL encrypt 0x00
+< HCI Command: Read Remote Supported Features (0x01|0x001b) plen 2
+    handle 1
+> HCI Event: Command Status (0x0f) plen 4
+    Read Remote Supported Features (0x01|0x001b) status 0x00 ncmd 1
+< HCI Command: Remote Name Request (0x01|0x0019) plen 10
+    bdaddr 00:A0:96:14:18:5B mode 2 clkoffset 0x0000
+> HCI Event: Command Status (0x0f) plen 4
+    Remote Name Request (0x01|0x0019) status 0x00 ncmd 1
+> HCI Event: Page Scan Repetition Mode Change (0x20) plen 7
+    bdaddr 00:A0:96:14:18:5B mode 1
+> HCI Event: Read Remote Supported Features (0x0b) plen 11
+    status 0x00 handle 1
+    Features: 0xff 0xff 0x8f 0xfe 0x9b 0xf9 0x00 0x80
+< HCI Command: Remote Name Request (0x01|0x0019) plen 10
+    bdaddr 00:A0:96:14:18:5B mode 2 clkoffset 0x0000
+< ACL data: handle 1 flags 0x00 dlen 10
+    0000: 06 00 01 00 0a 01 02 00  02 00                    ..........
+> HCI Event: Command Status (0x0f) plen 4
+    Remote Name Request (0x01|0x0019) status 0x00 ncmd 1
+> HCI Event: Remote Name Req Complete (0x07) plen 255
+    status 0x0c bdaddr 00:A0:96:14:18:5B name ''
+    Error: Command Disallowed
+> HCI Event: Max Slots Change (0x1b) plen 3
+    handle 1 slots 5
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> HCI Event: Remote Name Req Complete (0x07) plen 255
+    status 0x00 bdaddr 00:A0:96:14:18:5B name 'BlueRadios'
+> ACL data: handle 1 flags 0x02 dlen 16
+    L2CAP(s): Info rsp: type 2 result 0
+      Extended feature mask 0x0000
+< ACL data: handle 1 flags 0x00 dlen 12
+    0000: 08 00 01 00 02 02 04 00  03 00 40 00              ..........@.
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> ACL data: handle 1 flags 0x02 dlen 16
+    L2CAP(s): Connect rsp: dcid 0x0045 scid 0x0040 result 1 status 2
+      Connection pending - Authorization pending
+> ACL data: handle 1 flags 0x02 dlen 16
+    L2CAP(s): Connect rsp: dcid 0x0045 scid 0x0040 result 0 status 0
+      Connection successful
+< ACL data: handle 1 flags 0x00 dlen 16
+    0000: 0c 00 01 00 04 03 08 00  45 00 00 00 01 02 f5 03  ........E.......
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> ACL data: handle 1 flags 0x02 dlen 14
+    L2CAP(s): Config rsp: scid 0x0040 flags 0x00 result 0 clen 0
+      Success
+> ACL data: handle 1 flags 0x02 dlen 16
+    L2CAP(s): Config req: dcid 0x0040 flags 0x00 clen 4
+      MTU 1013
+
+// MTU
+< ACL data: handle 1 flags 0x00 dlen 18
+    0000: 0e 00 01 00 05 01 0a 00  45 00 00 00 00 00 01 02  ........E.......
+    0010: f5 03
+
+// SAMB FRAME  (empty)                                  ..
+< ACL data: handle 1 flags 0x00 dlen 8
+    0000: 04 00 45 00 03 3f 01 1c                           ..E..?..
+
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+
+// UA FRAME (empty)
+> ACL data: handle 1 flags 0x02 dlen 8
+    L2CAP(d): cid 0x0040 len 4 [psm 0]
+      0000: 03 73 01 d7                                       .s..
+
+// UIH FRAME (Parameter Negotiation Command)
+< ACL data: handle 1 flags 0x00 dlen 18
+    0000: 0e 00 45 00 03 ef 15 83  11 02 f0 07 00 f0 03 00  ..E.............
+    0010: 07 70                                                .p
+
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+
+// UIH FRAME (Parameter Negotiation Response)
+> ACL data: handle 1 flags 0x02 dlen 18
+    L2CAP(d): cid 0x0040 len 14 [psm 0]
+      0000: 01 ef 15 81 11 02 e0 07  00 7f 00 00 00 aa        ..............
+
+// SAMB FRAME (empty, server number is set)
+< ACL data: handle 1 flags 0x00 dlen 8
+    0000: 04 00 45 00 0b 3f 01 59                           ..E..?.Y
+
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+
+// UA FRAME (empty, server number set)
+> ACL data: handle 1 flags 0x02 dlen 8
+    L2CAP(d): cid 0x0040 len 4 [psm 0]
+      0000: 0b 73 01 92                                       .s..
+
+// UIH FRAME (MSC - Modem Status Command CR=1)
+< ACL data: handle 1 flags 0x00 dlen 12
+    0000: 08 00 45 00 03 ef 09 e3  05 0b 8d 70              ..E........p
+
+// UIH FRAME (MSC - Model Status Response CR=1)
+> ACL data: handle 1 flags 0x02 dlen 12
+    L2CAP(d): cid 0x0040 len 8 [psm 0]
+      0000: 01 ef 09 e3 05 0b 0d aa                           ........
+
+// UIH FRAME (MSC - Modem Status Command CR=0)
+< ACL data: handle 1 flags 0x00 dlen 12
+    0000: 08 00 45 00 03 ef 09 e1  05 0b 0d 70              ..E........p
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+
+// UIH FRAME (MSC - Modem Status Response CR=0)
+> ACL data: handle 1 flags 0x02 dlen 12
+    L2CAP(d): cid 0x0040 len 8 [psm 0]
+      0000: 01 ef 09 e1 05 0b 8d aa                           ........
+
+// UIH FRAME (MSC - Test Command) Poll=0x01
+< ACL data: handle 1 flags 0x00 dlen 9
+    0000: 05 00 45 00 0b ff 01 21  86                       ..E....!.
+
+// UIH FRAME (MSC - Test Response) Poll=0x01
+> ACL data: handle 1 flags 0x02 dlen 9
+    L2CAP(d): cid 0x0040 len 5 [psm 0]
+      0000: 09 ff 01 0f 5c                                    ....\
+
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> HCI Event: Role Change (0x12) plen 8
+    status 0x00 bdaddr 00:A0:96:14:18:5B role 0x01
+    Role: Slave
+> HCI Event: Max Slots Change (0x1b) plen 3
+    handle 1 slots 5
+< ACL data: handle 1 flags 0x00 dlen 15
+    0000: 0b 00 45 00 0b ef 0f 73  74 61 74 75 73 0d 9a     ..E....status..
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> ACL data: handle 1 flags 0x02 dlen 10
+    L2CAP(d): cid 0x0040 len 6 [psm 0]
+      0000: 09 ff 03 01 31 5c                                 ....1\
+> ACL data: handle 1 flags 0x02 dlen 17
+    L2CAP(d): cid 0x0040 len 13 [psm 0]
+      0000: 09 ef 13 34 39 38 35 30  38 30 33 33 40           ...498508033@
+> ACL data: handle 1 flags 0x02 dlen 12
+    L2CAP(d): cid 0x0040 len 8 [psm 0]
+      0000: 09 ef 09 2c 20 31 30 40                           ..., 10@
+> ACL data: handle 1 flags 0x02 dlen 28
+    L2CAP(d): cid 0x0040 len 24 [psm 0]
+      0000: 09 ef 29 32 33 2c 20 65  78 74 65 72 6e 61 6c 5f  ..)23, external_
+      0010: 70 6f 77 65 72 2c 20 40                           power, @
+> ACL data: handle 1 flags 0x02 dlen 32
+    L2CAP(d): cid 0x0040 len 28 [psm 0]
+      0000: 09 ef 31 31 2c 20 20 20  20 20 20 20 20 20 20 20  ..11,
+      0010: 30 2c 6d 74 39 61 32 38  2e 63 20 40              0,mt9a28.c @
+> ACL data: handle 1 flags 0x02 dlen 15
+    L2CAP(d): cid 0x0040 len 11 [psm 0]
+      0000: 09 ef 0f 31 34 39 38 35  31 30 40                 ...1498510@
+> ACL data: handle 1 flags 0x02 dlen 13
+    L2CAP(d): cid 0x0040 len 9 [psm 0]
+      0000: 09 ef 0b 38 30 30 2c 20  40                       ...800, @
+> ACL data: handle 1 flags 0x02 dlen 16
+    L2CAP(d): cid 0x0040 len 12 [psm 0]
+      0000: 09 ef 11 31 34 39 38 35  31 31 31 40              ...14985111@
+> ACL data: handle 1 flags 0x02 dlen 12
+    L2CAP(d): cid 0x0040 len 8 [psm 0]
+      0000: 09 ef 09 30 30 0d 0a 40                           ...00..@
+< ACL data: handle 1 flags 0x00 dlen 15
+    0000: 0b 00 45 00 0b ef 0f 72  65 70 6f 72 74 0d 9a     ..E....report..
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> ACL data: handle 1 flags 0x02 dlen 10
+    L2CAP(d): cid 0x0040 len 6 [psm 0]
+      0000: 09 ff 03 01 31 5c                                 ....1\
+> ACL data: handle 1 flags 0x02 dlen 22
+    L2CAP(d): cid 0x0040 len 18 [psm 0]
+      0000: 09 ef 1d 34 39 38 35 30  38 30 33 37 2c 31 30 32  ...498508037,102
+      0010: 33 40                                             3@
+> ACL data: handle 1 flags 0x02 dlen 13
+    L2CAP(d): cid 0x0040 len 9 [psm 0]
+      0000: 09 ef 0b 0d 0a 28 0d 0a  40                       .....(..@
+> ACL data: handle 1 flags 0x02 dlen 9
+    L2CAP(d): cid 0x0040 len 5 [psm 0]
+      0000: 09 ef 03 29 40                                    ...)@
+> ACL data: handle 1 flags 0x02 dlen 10
+    L2CAP(d): cid 0x0040 len 6 [psm 0]
+      0000: 09 ef 05 0d 0a 40                                 .....@
+< ACL data: handle 1 flags 0x00 dlen 28
+    0000: 18 00 45 00 0b ef 29 73  65 74 63 6c 6f 63 6b 2c  ..E...)setclock,
+    0010: 31 34 39 38 35 30 38 30  34 32 0d 9a              1498508042..
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+< ACL data: handle 1 flags 0x00 dlen 14
+    0000: 0a 00 45 00 0b ef 0d 63  6c 65 61 72 0d 9a        ..E....clear..
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+< ACL data: handle 1 flags 0x00 dlen 8
+    0000: 04 00 45 00 0b 53 01 b8                           ..E..S..
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> ACL data: handle 1 flags 0x02 dlen 8
+    L2CAP(d): cid 0x0040 len 4 [psm 0]
+      0000: 0b 73 01 92                                       .s..
+< ACL data: handle 1 flags 0x00 dlen 8
+    0000: 04 00 45 00 03 53 01 fd                           ..E..S..
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> ACL data: handle 1 flags 0x02 dlen 8
+    L2CAP(d): cid 0x0040 len 4 [psm 0]
+      0000: 03 73 01 d7                                       .s..
+< ACL data: handle 1 flags 0x00 dlen 12
+    0000: 08 00 01 00 06 04 04 00  45 00 40 00              ........E.@.
+> HCI Event: Number of Completed Packets (0x13) plen 5
+    handle 1 packets 1
+> ACL data: handle 1 flags 0x02 dlen 12
+    L2CAP(s): Disconn rsp: dcid 0x0045 scid 0x0040
+< HCI Command: Disconnect (0x01|0x0006) plen 3
+    handle 1 reason 0x13
+    Reason: Remote User Terminated Connection
+> HCI Event: Command Status (0x0f) plen 4
+    Disconnect (0x01|0x0006) status 0x00 ncmd 1
+> HCI Event: Disconn Complete (0x05) plen 4
+    status 0x00 handle 1 reason 0x16
+    Reason: Connection Terminated by Local Host

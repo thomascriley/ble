@@ -49,6 +49,12 @@ var funcMap = template.FuncMap{
 			s += fmt.Sprintf("// Set%s ...\n", k)
 			s += fmt.Sprintf("func (r %s) Set%s (v %s) { binary.LittleEndian.PutUint16(r[%d:], v)}", n, k, v, cnt)
 			cnt += 2
+		case "uint32":
+			s += fmt.Sprintf("// %s ...\n", k)
+			s += fmt.Sprintf("func (r %s) %s () %s { return binary.LittleEndian.Uint32(r[%d:])}\n", n, k, v, cnt)
+			s += fmt.Sprintf("// Set%s ...\n", k)
+			s += fmt.Sprintf("func (r %s) Set%s (v %s) { binary.LittleEndian.PutUint32(r[%d:], v)}", n, k, v, cnt)
+			cnt += 4
 		case "uint64":
 			s += fmt.Sprintf("// %s ...\n", k)
 			s += fmt.Sprintf("func (r %s) %s () %s { return binary.LittleEndian.Uint64(r[%d:])}\n", n, k, v, cnt)
@@ -60,6 +66,17 @@ var funcMap = template.FuncMap{
 			s += fmt.Sprintf("func (r %s) %s () %s { return r[%d:]}\n", n, k, v, cnt)
 			s += fmt.Sprintf("// Set%s ...\n", k)
 			s += fmt.Sprintf("func (r %s) Set%s (v %s) { copy(r[%d:], v)}", n, k, v, cnt)
+		case "[3]byte":
+			s += fmt.Sprintf("// %s ...\n", k)
+			s += fmt.Sprintf(`func (r %s) %s () %s {
+				 b:=[3]byte{}
+				 copy(b[:], r[%d:])
+				 return b
+				 }
+				 `, n, k, v, cnt)
+			s += fmt.Sprintf("// Set%s ...\n", k)
+			s += fmt.Sprintf(`func (r %s) Set%s (v %s) { copy(r[%d:%d+3], v[:]) }`, n, k, v, cnt, cnt)
+			cnt += 3
 		case "[6]byte":
 			s += fmt.Sprintf("// %s ...\n", k)
 			s += fmt.Sprintf(`func (r %s) %s () %s {
@@ -82,6 +99,28 @@ var funcMap = template.FuncMap{
 			s += fmt.Sprintf("// Set%s ...\n", k)
 			s += fmt.Sprintf(`func (r %s) Set%s (v %s) { copy(r[%d:%d+12], v[:]) }`, n, k, v, cnt, cnt)
 			cnt += 12
+		case "[16]byte":
+			s += fmt.Sprintf("// %s ...\n", k)
+			s += fmt.Sprintf(`func (r %s) %s () %s {
+				 b:=[16]byte{}
+				 copy(b[:], r[%d:])
+				 return b
+				 }
+				 `, n, k, v, cnt)
+			s += fmt.Sprintf("// Set%s ...\n", k)
+			s += fmt.Sprintf(`func (r %s) Set%s (v %s) { copy(r[%d:%d+16], v[:]) }`, n, k, v, cnt, cnt)
+			cnt += 16
+		case "[248]byte":
+			s += fmt.Sprintf("// %s ...\n", k)
+			s += fmt.Sprintf(`func (r %s) %s () %s {
+				 b:=[248]byte{}
+				 copy(b[:], r[%d:])
+				 return b
+				 }
+				 `, n, k, v, cnt)
+			s += fmt.Sprintf("// Set%s ...\n", k)
+			s += fmt.Sprintf(`func (r %s) Set%s (v %s) { copy(r[%d:%d+248], v[:]) }`, n, k, v, cnt, cnt)
+			cnt += 248
 		default:
 			s += fmt.Sprintf("XXX: %s, %s, %s", n, k, v)
 		}
@@ -96,11 +135,22 @@ var funcMap = template.FuncMap{
 		case "uint16":
 			s = fmt.Sprintf("func (r %s) %s () %s { return binary.LittleEndian.Uint16(r[%d:])}\n", n, k, v, cnt)
 			cnt += 2
+		case "uint32":
+			s = fmt.Sprintf("func (r %s) %s () %s { return binary.LittleEndian.Uint32(r[%d:])}\n", n, k, v, cnt)
+			cnt += 4
 		case "uint64":
 			s = fmt.Sprintf("func (r %s) %s () %s { return binary.LittleEndian.Uint64(r[%d:])}\n", n, k, v, cnt)
 			cnt += 8
 		case "[]byte":
 			s = fmt.Sprintf("func (r %s) %s () %s { return r[%d:]}\n", n, k, v, cnt)
+		case "[3]byte":
+			s = fmt.Sprintf(`func (r %s) %s () %s {
+				 b:=[3]byte{}
+				 copy(b[:], r[%d:])
+				 return b
+				 }
+				 `, n, k, v, cnt)
+			cnt += 3
 		case "[6]byte":
 			s = fmt.Sprintf(`func (r %s) %s () %s {
 				 b:=[6]byte{}
@@ -117,6 +167,22 @@ var funcMap = template.FuncMap{
 				 }
 				 `, n, k, v, cnt)
 			cnt += 12
+		case "[16]byte":
+			s = fmt.Sprintf(`func (r %s) %s () %s {
+				 b:=[16]byte{}
+				 copy(b[:], r[%d:])
+				 return b
+				 }
+				 `, n, k, v, cnt)
+			cnt += 16
+		case "[248]byte":
+			s = fmt.Sprintf(`func (r %s) %s () %s {
+				 b:=[248]byte{}
+				 copy(b[:], r[%d:])
+				 return b
+				 }
+				 `, n, k, v, cnt)
+			cnt += 248
 		default:
 			s += fmt.Sprintf("XXX: %s, %s, %s", n, k, v)
 		}
@@ -213,13 +279,41 @@ func genEvt(b []byte, w io.Writer, t *template.Template) {
 	}
 }
 
+// Pair Packet format
+type pair struct {
+	Name                string
+	Spec                string
+	Code                string
+	Fields              []field
+	DefaultUnmarshaller bool
+	AuthReq             bool
+	KeyDist             bool
+}
+
+type pairs struct {
+	Pairing []pair
+}
+
+func genPair(b []byte, w io.Writer, t *template.Template) {
+	var pairs pairs
+	if err := json.Unmarshal(b, &pairs); err != nil {
+		log.Printf("failed to read spec.json, err: %s", err)
+	}
+	for _, p := range pairs.Pairing {
+		if err := t.Execute(w, p); err != nil {
+			log.Fatalf("execution: %s", err)
+		}
+	}
+}
+
 // Signal Packet format
 type signal struct {
-	Name   string
-	Spec   string
-	Code   string
-	Fields []field
-	Type   string
+	Name                string
+	Spec                string
+	Code                string
+	Fields              []field
+	Type                string
+	DefaultUnmarshaller bool
 }
 
 type signals struct {
@@ -232,6 +326,31 @@ func genSignal(b []byte, w io.Writer, t *template.Template) {
 		log.Printf("failed to read spec.json, err: %s", err)
 	}
 	for _, p := range signals.Signals {
+		if err := t.Execute(w, p); err != nil {
+			log.Fatalf("execution: %s", err)
+		}
+	}
+}
+
+// Option Packet format
+type option struct {
+	Name   string
+	Spec   string
+	Type   string
+	Fields []field
+	Length string
+}
+
+type options struct {
+	Options []option
+}
+
+func genOption(b []byte, w io.Writer, t *template.Template) {
+	var options options
+	if err := json.Unmarshal(b, &options); err != nil {
+		log.Printf("failed to read spec.json, err: %s", err)
+	}
+	for _, p := range options.Options {
 		if err := t.Execute(w, p); err != nil {
 			log.Fatalf("execution: %s", err)
 		}
@@ -290,6 +409,20 @@ func main() {
 			log.Fatalf("parsing: %s", err)
 		}
 		genSignal(b, w, t)
+	case "pair":
+		fmt.Fprintf(w, "package smp\n")
+		t, err := template.New(*tmpl).Funcs(funcMap).Parse(string(input("pair.tmpl")))
+		if err != nil {
+			log.Fatalf("parsing: %s", err)
+		}
+		genPair(b, w, t)
+	case "option":
+		fmt.Fprintf(w, "package l2cap\n")
+		t, err := template.New(*tmpl).Funcs(funcMap).Parse(string(input("option.tmpl")))
+		if err != nil {
+			log.Fatalf("parsing: %s", err)
+		}
+		genOption(b, w, t)
 	case "att":
 		fmt.Fprintf(w, "package att\n")
 		t, err := template.New(*tmpl).Funcs(funcMap).Parse(string(input("att.tmpl")))

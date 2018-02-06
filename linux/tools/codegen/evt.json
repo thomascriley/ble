@@ -1,6 +1,89 @@
 {
         "Events": [
                 {
+                        "Name": "Inquiry Complete",
+                        "Spec": "Vol 2, Part E, 7.7.1",
+                        "Code": "0x01",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Inquiry Result",
+                        "Spec": "Vol 2, Part E, 7.7.2",
+                        "Code": "0x02",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Num Responses": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[][6]byte"
+                                },
+                                {
+                                        "Page Scan Repetition Model": "[]uint8"
+                                },
+                                {
+                                        "Reserved": "[]uint8"
+                                },
+                                {
+                                        "Reserved": "[]uint8"
+                                },
+                                {
+                                        "Class of Device": "[][3]uint8"
+                                },
+                                {
+                                        "Clock Offset": "[]uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Connection Complete",
+                        "Spec": "Vol 2, Part E, 7.7.3",
+                        "Code": "0x03",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Link Type": "uint8"
+                                },
+                                {
+                                        "Encryption Enabled": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Connection Request",
+                        "Spec": "Vol 2, Part E, 7.7.6",
+                        "Code": "0x04",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Class Of Device": "[3]byte"
+                                },
+                                {
+                                        "Link Type": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
                         "Name": "Disconnection Complete",
                         "Spec": "Vol 2, Part E, 7.7.5",
                         "Code": "0x05",
@@ -18,6 +101,37 @@
                         "DefaultUnmarshaller": true
                 },
                 {
+                        "Name": "Authentication Complete",
+                        "Spec": "Vol 2, Part E, 7.7.6",
+                        "Code": "0x06",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Remote Name Request Complete",
+                        "Spec": "Vol 2, Part E, 7.7.7",
+                        "Code": "0x07",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Remote Name": "[248]byte"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
                         "Name": "Encryption Change",
                         "Spec": "Vol 2, Part E, 7.7.8",
                         "Code": "0x08",
@@ -30,6 +144,54 @@
                                 },
                                 {
                                         "Encryption Enabled": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Change Connection Link Key Complete",
+                        "Spec": "Vol 2, Part E, 7.7.9",
+                        "Code": "0x09",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Master Link Key Complete",
+                        "Spec": "Vol 2, Part E, 7.7.10",
+                        "Code": "0x0A",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Key Flag": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Read Remote Supported Features Complete",
+                        "Spec": "Vol 2, Part E, 7.7.11",
+                        "Code": "0x0B",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "LMP Features": "uint64"
                                 }
                         ],
                         "DefaultUnmarshaller": true
@@ -53,6 +215,38 @@
                                 },
                                 {
                                         "Subversion": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "QoS Setup Complete",
+                        "Spec": "Vol 2, Part E, 7.7.13",
+                        "Code": "0x0D",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Flags": "uint8"
+                                },
+                                {
+                                        "Service Type": "uint8"
+                                },
+                                {
+                                        "Token Rate": "uint32"
+                                },
+                                {
+                                        "Peak Bandwidth": "uint32"
+                                },
+                                {
+                                        "Latency": "uint32"
+                                },
+                                {
+                                        "Delay Variation": "uint32"
                                 }
                         ],
                         "DefaultUnmarshaller": true
@@ -103,6 +297,34 @@
                         "DefaultUnmarshaller": true
                 },
                 {
+                        "Name": "Flush Occurred",
+                        "Spec": "Vol 2, Part E, 7.7.17",
+                        "Code": "0x11",
+                        "Param": [
+                                {
+                                        "Handle": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Role Change",
+                        "Spec": "Vol 2, Part E, 7.7.18",
+                        "Code": "0x12",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "New Role": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
                         "Name": "Number Of Completed Packets",
                         "Spec": "Vol 2, Part E, 7.7.19",
                         "Code": "0x13",
@@ -120,6 +342,93 @@
                         "DefaultUnmarshaller": false
                 },
                 {
+                        "Name": "Mode Change",
+                        "Spec": "Vol 2, Part E, 7.7.20",
+                        "Code": "0x14",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Current Mode": "uint8"
+                                },
+                                {
+                                        "Interval": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Return Link Keys",
+                        "Spec": "Vol 2, Part E, 7.7.21",
+                        "Code": "0x15",
+                        "Param": [
+                                {
+                                        "Num Keys": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[][6]byte"
+                                },
+                                {
+                                        "Link Key": "[][16]byte"
+                                }
+                        ],
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Pin Code Request",
+                        "Spec": "Vol 2, Part E, 7.7.22",
+                        "Code": "0x16",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Link Key Request",
+                        "Spec": "Vol 2, Part E, 7.7.23",
+                        "Code": "0x17",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Link Key Notification",
+                        "Spec": "Vol 2, Part E, 7.7.24",
+                        "Code": "0x18",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Link Key": "[16]byte"
+                                },
+                                {
+                                        "Link Type": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Loopback Command",
+                        "Spec": "Vol 2, Part E, 7.7.25",
+                        "Code": "0x19",
+                        "Param": [
+                                {
+                                        "HCI Command Packet": "[]byte"
+                                }
+                        ],
+                        "DefaultUnmarshaller": false
+                },
+                {
                         "Name": "Data Buffer Overflow",
                         "Spec": "Vol 2, Part E, 7.7.26",
                         "Code": "0x1A",
@@ -131,6 +440,282 @@
                         "DefaultUnmarshaller": true
                 },
                 {
+                        "Name": "Max Slots Change",
+                        "Spec": "Vol 2, Part E, 7.7.27",
+                        "Code": "0x1B",
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "LP Max Slots": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Read Clock Offset Complete",
+                        "Spec": "Vol 2, Part E, 7.7.28",
+                        "Code": "0x1C",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Clock Offset": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Connection Packet Type Changed",
+                        "Spec": "Vol 2, Part E, 7.7.29",
+                        "Code": "0x1D",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Packet Type": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "QoS Violation",
+                        "Spec": "Vol 2, Part E, 7.7.30",
+                        "Code": "0x1E",
+                        "Param": [
+                                {
+                                        "Handle": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Page Scan Repetition Mode Change",
+                        "Spec": "Vol 2, Part E, 7.7.31",
+                        "Code": "0x20",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Page Scan Repetition Mode": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Flow Specification Complete",
+                        "Spec": "Vol 2, Part E, 7.7.32",
+                        "Code": "0x21",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Flags": "uint8"
+                                },
+                                {
+                                        "Flow Direction": "uint8"
+                                },
+                                {
+                                        "Service Type": "uint8"
+                                },
+                                {
+                                        "Token Rate": "uint32"
+                                },
+                                {
+                                        "Token Bucket Size": "uint32"
+                                },
+                                {
+                                        "Peak Bandwidth": "uint32"
+                                },
+                                {
+                                        "Access Latency": "uint32"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Inquiry Result with RSSI",
+                        "Spec": "Vol 2, Part E, 7.7.33",
+                        "Code": "0x22",
+                        "Param": [
+                                {
+                                        "Num Responses": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[][6]byte"
+                                },
+                                {
+                                        "Page Scan Repetition Mode": "[]uint8"
+                                },
+                                {
+                                        "Reserved": "[]uint8"
+                                },
+                                {
+                                        "ClassOfDevice": "[][3]byte"
+                                },
+                                {
+                                        "Clock Offset": "[]uint16"
+                                },
+                                {
+                                        "RSSI": "[]uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Read Remote Extended Features Complete",
+                        "Spec": "Vol 2, Part E, 7.7.34",
+                        "Code": "0x23",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Page Number": "uint8"
+                                },
+                                {
+                                        "Maximum Page Number": "uint8"
+                                },
+                                {
+                                        "Extended LMP Features": "uint64"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Synchronous Connection Complete",
+                        "Spec": "Vol 2, Part E, 7.7.35",
+                        "Code": "0x2C",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Link Type": "uint8"
+                                },
+                                {
+                                        "Transmission Interval": "uint8"
+                                },
+                                {
+                                        "Retransmission Window": "uint8"
+                                },
+                                {
+                                        "Rx Packet Length": "uint16"
+                                },
+                                {
+                                        "Tx Packet Length": "uint16"
+                                },
+                                {
+                                        "Air Mode": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Synchronous Connection Changed",
+                        "Spec": "Vol 2, Part E, 7.7.36",
+                        "Code": "0x2D",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Transmission Interval": "uint8"
+                                },
+                                {
+                                        "Retransmission Window": "uint8"
+                                },
+                                {
+                                        "Rx Packet Length": "uint16"
+                                },
+                                {
+                                        "Tx Packet Length": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Sniff Subrating",
+                        "Spec": "Vol 2, Part E, 7.7.37",
+                        "Code": "0x2E",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Maximum Transmit Latency": "uint16"
+                                },
+                                {
+                                        "Minimum Transmit Latency": "uint16"
+                                },
+                                {
+                                        "Minimum Remote Timeout": "uint16"
+                                },
+                                {
+                                        "Minimum Local Timeout": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Extended Inquiry",
+                        "Spec": "Vol 2, Part E, 7.7.38",
+                        "Code": "0x2F",
+                        "Param": [
+                                {
+                                        "Num Responses": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Page Scan Repetition Mode": "uint8"
+                                },
+                                {
+                                        "Reserved": "uint8"
+                                },
+                                {
+                                        "ClassOfDevice": "[3]byte"
+                                },
+                                {
+                                        "Clock Offset": "uint16"
+                                },
+                                {
+                                        "RSSI": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": false
+                },
+                {
                         "Name": "Encryption Key Refresh Complete",
                         "Spec": "Vol 2, Part E, 7.7.39",
                         "Code": "0x30",
@@ -140,6 +725,383 @@
                                 },
                                 {
                                         "Connection Handle": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "IO Capability Request",
+                        "Spec": "Vol 2, Part E, 7.7.40",
+                        "Code": "0x31",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "IO Capability Response",
+                        "Spec": "Vol 2, Part E, 7.7.41",
+                        "Code": "0x32",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "IO Capability": "uint8"
+                                },
+                                {
+                                        "OOB Data Present": "uint8"
+                                },
+                                {
+                                        "Authentication Requirements": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "User Confirmation Request",
+                        "Spec": "Vol 2, Part E, 7.7.42",
+                        "Code": "0x33",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Numeric Value": "uint32"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "User Passkey Request",
+                        "Spec": "Vol 2, Part E, 7.7.43",
+                        "Code": "0x34",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Remote OOB Data Request",
+                        "Spec": "Vol 2, Part E, 7.7.44",
+                        "Code": "0x35",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Simple Pairing Complete",
+                        "Spec": "Vol 2, Part E, 7.7.45",
+                        "Code": "0x36",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Link Supervision Timeout Changed",
+                        "Spec": "Vol 2, Part E, 7.7.46",
+                        "Code": "0x38",
+                        "Param": [
+                                {
+                                        "Connection Handle": "uint16"
+                                },
+                                {
+                                        "Link Supervision Timeout": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Enhanced Flush Complete",
+                        "Spec": "Vol 2, Part E, 7.7.47",
+                        "Code": "0x39",
+                        "Param": [
+                                {
+                                        "Handle": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "User Passkey Notification",
+                        "Spec": "Vol 2, Part E, 7.7.48",
+                        "Code": "0x3B",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Passkey": "uint32"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Keypress Notification",
+                        "Spec": "Vol 2, Part E, 7.7.49",
+                        "Code": "0x3C",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Notification Type": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Remote Host Supported Features Notification",
+                        "Spec": "Vol 2, Part E, 7.7.50",
+                        "Code": "0x3D",
+                        "Param": [
+                                {
+                                        "BDADDR": "[6]byte"
+                                },
+                                {
+                                        "Host Supported Features": "uint64"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Physical Link Complete",
+                        "Spec": "Vol 2, Part E, 7.7.51",
+                        "Code": "0x40",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Physical Link Handle": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Physical Link Handle",
+                        "Spec": "Vol 2, Part E, 7.7.52",
+                        "Code": "0x41",
+                        "Param": [
+                                {
+                                        "Physical Link Handle": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Disconnection Physical Link Complete",
+                        "Spec": "Vol 2, Part E, 7.7.53",
+                        "Code": "0x42",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Physical Link Handle": "uint8"
+                                },
+                                {
+                                        "Reason": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Physical Link Loss Early Warning",
+                        "Spec": "Vol 2, Part E, 7.7.54",
+                        "Code": "0x43",
+                        "Param": [
+                                {
+                                        "Physical Link Handle": "uint8"
+                                },
+                                {
+                                        "Link Loss Reason": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Physical Link Recovery",
+                        "Spec": "Vol 2, Part E, 7.7.55",
+                        "Code": "0x44",
+                        "Param": [
+                                {
+                                        "Physical Link Handle": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Logical Link Complete",
+                        "Spec": "Vol 2, Part E, 7.7.56",
+                        "Code": "0x45",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Logical Link Handle": "uint16"
+                                },
+                                {
+                                        "Physical Link Handle": "uint8"
+                                },
+                                {
+                                        "TX Flow Spec ID": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Disconnection Logical Link Complete",
+                        "Spec": "Vol 2, Part E, 7.7.57",
+                        "Code": "0x46",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Logical Link Handle": "uint16"
+                                },
+                                {
+                                        "Reason": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Flow Spec Modify Complete",
+                        "Spec": "Vol 2, Part E, 7.7.58",
+                        "Code": "0x47",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Handle": "uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Number of Completed Data Blocks",
+                        "Spec": "Vol 2, Part E, 7.7.59",
+                        "Code": "0x48",
+                        "Param": [
+                                {
+                                        "Total Num Data Blocks": "uint16"
+                                },
+                                {
+                                        "Number of Handles": "uint8"
+                                },
+                                {
+                                        "Handle": "[]uint16"
+                                },
+                                {
+                                        "Num Of Completed Packets": "[]uint16"
+                                },
+                                {
+                                        "Num of Completed Blocks": "[]uint16"
+                                }
+                        ],
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Short Range Mode Change Complete",
+                        "Spec": "Vol 2, Part E, 7.7.60",
+                        "Code": "0x4C",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Physical Link Handle": "uint8"
+                                },
+                                {
+                                        "Short Range Mode State": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "AMP Status Change",
+                        "Spec": "Vol 2, Part E, 7.7.61",
+                        "Code": "0x4D",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "AMP Status": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "AMP Start Test",
+                        "Spec": "Vol 2, Part E, 7.7.62",
+                        "Code": "0x49",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Test Scenario": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "AMP Test End",
+                        "Spec": "Vol 2, Part E, 7.7.63",
+                        "Code": "0x4A",
+                        "Param": [
+                                {
+                                        "Status": "uint8"
+                                },
+                                {
+                                        "Test Scenario": "uint8"
+                                }
+                        ],
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "AMP Receiver Report",
+                        "Spec": "Vol 2, Part E, 7.7.64",
+                        "Code": "0x4B",
+                        "Param": [
+                                {
+                                        "Controller Type": "uint8"
+                                },
+                                {
+                                        "Reason": "uint8"
+                                },
+                                {
+                                        "Event Type": "uint32"
+                                },
+                                {
+                                        "Number Of Frames": "uint16"
+                                },
+                                {
+                                        "Number Of Error Frames": "uint16"
+                                },
+                                {
+                                        "Number Of Bits": "uint32"
+                                },
+                                {
+                                        "Number of Error Bits": "uint32"
                                 }
                         ],
                         "DefaultUnmarshaller": true

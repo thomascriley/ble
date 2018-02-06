@@ -79,7 +79,11 @@ func (c *conn) SetTxMTU(mtu int) {
 	c.txMTU = mtu
 }
 
-func (c *conn) Read(b []byte) (int, error) {
+func (c *conn) ReadSDU(b []byte) (bool, int, error) {
+	return false, 0, nil
+}
+
+func (c *conn) Read(b []byte) (n int, err error) {
 	return 0, nil
 }
 

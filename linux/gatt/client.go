@@ -52,6 +52,10 @@ func (p *Client) Name() string {
 	return p.name
 }
 
+func (p *Client) Connection() ble.Conn {
+	return p.conn
+}
+
 // Profile returns the discovered profile.
 func (p *Client) Profile() *ble.Profile {
 	p.RLock()
@@ -279,6 +283,7 @@ func (p *Client) ExchangeMTU(mtu int) (int, error) {
 func (p *Client) Subscribe(c *ble.Characteristic, ind bool, h ble.NotificationHandler) error {
 	p.Lock()
 	defer p.Unlock()
+
 	if c.CCCD == nil {
 		return fmt.Errorf("CCCD not found")
 	}

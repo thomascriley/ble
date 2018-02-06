@@ -9,18 +9,34 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/pkg/errors"
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/hci/cmd"
 	"github.com/thomascriley/ble/linux/hci/evt"
-	"github.com/pkg/errors"
+	"github.com/thomascriley/ble/linux/smp"
 )
+
+type ConnectionCompleteEvent interface {
+	PeerAddress() [6]byte
+	ConnectionHandle() uint16
+	Role() uint8
+}
 
 // Conn ...
 type Conn struct {
 	hci *HCI
 	ctx context.Context
 
-	param evt.LEConnectionComplete
+	param ConnectionCompleteEvent
+
+	// LMP Supported Features as reported by the Read Remote Supported Features
+	// Command [Vol 2, Part C, 3.3]
+	lmpFeatures uint64
+
+	// The channel identifiers. This may be a fixed ID for some protocols (LE)
+	// but dynamic for others (BR/EDR) [Vol 3, Part A, 2.1]
+	SourceID      uint16
+	DestinationID uint16
 
 	// While MTU is the maximum size of payload data that the upper layer (ATT)
 	// can accept, the MPS is the maximum PDU payload size this L2CAP implementation
@@ -30,6 +46,9 @@ type Conn struct {
 	// For LE-U logical transport, the L2CAP implementations should support
 	// a minimum of 23 bytes, which are also the default values before the
 	// upper layer (ATT) optionally reconfigures them [Vol 3, Part A, 3.2.8].
+	//
+	// All L2CAP implementations shall support a minimum MTU of 48 octets over
+	// the ACL-U logical link and 23 octets over the LE-U logical link [Vol 3, Part A, 5.1]
 	rxMTU int
 	txMTU int
 	rxMPS int
@@ -54,8 +73,17 @@ type Conn struct {
 	// Identifier shall be used for each successive command. [Vol 3, Part A, 4]
 	sigID uint8
 
+	// sigCID The signaling channel for managing channels over ACL-U logical
+	// links shall use CID 0x0001 and the signaling channel for managing channels
+	// over LE-U logical links shall use CID 0x0005 [Vol 3, Part A, 4]
+	sigCID uint16
+
 	sigSent chan []byte
 	smpSent chan []byte
+
+	// cfgRequest closes when the RFCOMM connection responds to a configuration
+	// request
+	cfgRequest chan struct{}
 
 	chInPkt chan packet
 	chInPDU chan pdu
@@ -64,22 +92,58 @@ type Conn struct {
 	// chSentBufs tracks the HCI buffer occupied by this connection.
 	txBuffer *Client
 
+	// extendedFeatures BR/EDR/LE supported extended features as determined by a signaling request
+	extendedFeatures uint32
+
+	// fixedChannels BR/EDR/LE supported fixed channels as determined by a signaling request
+	fixedChannels uint64
+
+	// set of agreed upon parameters to use for the pairing process
+	smpPairingResp *smp.PairingResponse
+	smpPairingReq  *smp.PairingRequest
+
+	// smpInitiator if this device initiated the pairing process
+	smpInitiator bool
+
+	// Confirm and Random values for function c1 used during the LE Legacy Pairing Phase 2
+	// store both the Slave and Master versions
+	smpMConfirm [16]byte
+	smpMRand    [16]byte
+	smpSConfirm [16]byte
+	smpSRand    [16]byte
+
 	chDone chan struct{}
 }
 
-func newConn(h *HCI, param evt.LEConnectionComplete) *Conn {
+func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
+	var (
+		sigCID     uint16
+		defaultMTU int
+	)
+
+	if _, ok := param.(evt.LEConnectionComplete); ok {
+		sigCID = uint16(cidLESignal)
+		defaultMTU = ble.DefaultMTU
+	} else {
+		sigCID = uint16(cidSignal)
+		defaultMTU = ble.DefaultACLMTU
+	}
+
 	c := &Conn{
 		hci:   h,
 		ctx:   context.Background(),
 		param: param,
 
-		rxMTU: ble.DefaultMTU,
-		txMTU: ble.DefaultMTU,
+		rxMTU: defaultMTU,
+		txMTU: defaultMTU,
 
-		rxMPS: ble.DefaultMTU,
+		rxMPS: defaultMTU,
 
-		sigRxMTU: ble.MaxMTU,
-		sigTxMTU: ble.DefaultMTU,
+		sigCID:   sigCID,
+		sigRxMTU: defaultMTU,
+		sigTxMTU: defaultMTU,
+
+		cfgRequest: make(chan struct{}),
 
 		chInPkt: make(chan packet, 16),
 		chInPDU: make(chan pdu, 16),
@@ -158,7 +222,7 @@ func (c *Conn) Write(sdu []byte) (int, error) {
 	}
 	b := make([]byte, 4+plen)
 	binary.LittleEndian.PutUint16(b[0:2], uint16(len(sdu)))
-	binary.LittleEndian.PutUint16(b[2:4], cidLEAtt)
+	binary.LittleEndian.PutUint16(b[2:4], c.SourceID)
 	if c.leFrame {
 		binary.LittleEndian.PutUint16(b[4:6], uint16(len(sdu)))
 		copy(b[6:], sdu)
@@ -244,6 +308,10 @@ func (c *Conn) recombine() error {
 	if p.cid() == cidLEAtt && p.dlen() > c.rxMPS {
 		return fmt.Errorf("fragment size (%d) larger than rxMPS (%d)", p.dlen(), c.rxMPS)
 	}
+	// TODO check ACL-U packets length
+	// not supporting Extended Flow Specification <= 48
+	// supporting the Extended Flow Specification <= 672
+	// [Vol 3, Part 4]
 
 	// If this pkt is not a complete PDU, and we'll be receiving more
 	// fragments, re-allocate the whole PDU (including Header).
@@ -258,16 +326,20 @@ func (c *Conn) recombine() error {
 		p = append(p, pdu(pkt.data())...)
 	}
 
-	// TODO: support dynamic or assigned channels for LE-Frames.
-	switch p.cid() {
-	case cidLEAtt:
+	cid := p.cid()
+	switch {
+	case cid == cidSignal:
+		return c.handleSignal(p)
+	case cid == cidLEAtt:
 		c.chInPDU <- p
-	case cidLESignal:
+	case cid == cidLESignal:
 		c.handleSignal(p)
-	case cidSMP:
+	case cid == cidSMP:
 		c.handleSMP(p)
+	case cid >= cidDynamicStart:
+		c.chInPDU <- p
 	default:
-		logger.Info("recombine()", "unrecognized CID", fmt.Sprintf("%04X, [%X]", p.cid(), p))
+		logger.Info("recombine()", "unrecognized CID", fmt.Sprintf("%04X, [%X]", cid, p))
 	}
 	return nil
 }

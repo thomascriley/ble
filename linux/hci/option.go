@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/thomascriley/ble/linux/hci/cmd"
+	"github.com/thomascriley/ble/linux/smp"
 )
 
 // An Option is a configuration function, which configures the device.
@@ -37,6 +38,14 @@ func OptListenerTimeout(d time.Duration) Option {
 func OptConnParams(param cmd.LECreateConnection) Option {
 	return func(h *HCI) error {
 		h.params.connParams = param
+		return nil
+	}
+}
+
+// OptPairingIO allows input and output for the pairing process.
+func OptPairingCapabilities(param smp.Capabilities) Option {
+	return func(h *HCI) error {
+		h.smpCapabilites = param
 		return nil
 	}
 }

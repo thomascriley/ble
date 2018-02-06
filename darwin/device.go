@@ -191,6 +191,11 @@ func (d *Device) stopAdvertising() error {
 	return errors.Wrap(d.sendReq(d.pm, 9, nil).err(), "can't stop advertising")
 }
 
+// Scans for BR/EDR devices
+func (d *Device) Inquire(ctx context.Context, numResponses int, h ble.InqHandler) error {
+	return errors.New("Not implemented")
+}
+
 // Scan ...
 func (d *Device) Scan(ctx context.Context, allowDup bool, h ble.AdvHandler) error {
 	d.advHandler = h
@@ -348,6 +353,16 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 		c.SetContext(ctx)
 		return NewClient(c)
 	}
+}
+
+// DialRFCOMM ...
+func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (ble.RFCOMMClient, error) {
+	return nil, errors.New("Not implemented")
+}
+
+// RequestRemoteName
+func (h *Device) RequestRemoteName(a ble.Addr) (string, error) {
+	return "", errors.New("Not implemented")
 }
 
 // Stop ...

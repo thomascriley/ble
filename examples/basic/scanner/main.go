@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"flag"
 	"fmt"
@@ -17,6 +18,7 @@ var (
 	device = flag.String("device", "default", "implementation of ble")
 	du     = flag.Duration("du", 5*time.Second, "scanning duration")
 	dup    = flag.Bool("dup", true, "allow duplicate reported")
+	bredr  = flag.Bool("bredr", false, "scan fro BR/EDR devices")
 )
 
 func main() {
@@ -31,7 +33,16 @@ func main() {
 	// Scan for specified durantion, or until interrupted by user.
 	fmt.Printf("Scanning for %s...\n", *du)
 	ctx := ble.WithSigHandler(context.WithTimeout(context.Background(), *du))
-	chkErr(ble.Scan(ctx, *dup, advHandler, nil))
+
+	if *bredr {
+		chkErr(ble.Inquire(ctx, 255, inqHandler))
+	} else {
+		chkErr(ble.Scan(ctx, *dup, advHandler, nil))
+	}
+}
+
+func inqHandler(i ble.Inquiry) {
+	fmt.Printf("[%s] %3d\n", i.Address(), i.RSSI())
 }
 
 func advHandler(a ble.Advertisement) {
@@ -65,4 +76,4 @@ func chkErr(err error) {
 	default:
 		log.Fatalf(err.Error())
 	}
-}
+}*/

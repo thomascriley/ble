@@ -1,0 +1,178 @@
+{
+        "Pairing": [{
+                        "Name": "Pairing Request",
+                        "Spec": "Vol 3, Part H, 3.5.1",
+                        "Code": "0x01",
+                        "Fields": [{
+                                        "IO Capability": "uint8"
+                                },
+                                {
+                                        "OOB Data Flag": "uint8"
+                                },
+                                {
+                                        "Max Encryption Key Size": "uint8"
+                                }
+                        ],
+                        "AuthReq": true,
+                        "KeyDist": true,
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Pairing Response",
+                        "Spec": "Vol 3, Part H, 3.5.2",
+                        "Code": "0x02",
+                        "Fields": [{
+                                        "IO Capability": "uint8"
+                                },
+                                {
+                                        "OOB Data Flag": "uint8"
+                                },
+                                {
+                                        "Max Encryption Key Size": "uint8"
+                                }
+                        ],
+                        "AuthReq": true,
+                        "KeyDist": true,
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Pairing Confirm",
+                        "Spec": "Vol 3, Part H, 3.5.3",
+                        "Code": "0x03",
+                        "Fields": [{
+                                "Confirm Value": "[]byte"
+                        }],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Pairing Random",
+                        "Spec": "Vol 3, Part H, 3.5.4",
+                        "Code": "0x04",
+                        "Fields": [{
+                                "Random Value": "[]byte"
+                        }],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Pairing Failed",
+                        "Spec": "Vol 3, Part H, 3.5.5",
+                        "Code": "0x05",
+                        "Fields": [{
+                                "Reason": "uint8"
+                        }],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Encryption Information",
+                        "Spec": "Vol 3, Part H, 3.5.2",
+                        "Code": "0x06",
+                        "Fields": [{
+                                "Long Term Key": "[]byte"
+                        }],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Master Identification",
+                        "Spec": "Vol 3, Part H, 3.5.3",
+                        "Code": "0x07",
+                        "Fields": [{
+                                        "EDIV": "uint16"
+                                },
+                                {
+                                        "Rand": "uint64"
+                                }
+                        ],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Identity Identification",
+                        "Spec": "Vol 3, Part H, 3.5.4",
+                        "Code": "0x08",
+                        "Fields": [{
+                                "Identity Resolving Key": "[]byte"
+                        }],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Identity Address Identification",
+                        "Spec": "Vol 3, Part H, 3.5.5",
+                        "Code": "0x09",
+                        "Fields": [{
+                                        "AddrType": "uint8"
+                                },
+                                {
+                                        "BDADDR": "[6]byte"
+                                }
+                        ],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Signing Information",
+                        "Spec": "Vol 3, Part H, 3.5.6",
+                        "Code": "0x0A",
+                        "Fields": [{
+                                "Signature Key": "[]byte"
+                        }],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Security Request",
+                        "Spec": "Vol 3, Part H, 3.5.6",
+                        "Code": "0x0B",
+                        "Fields": [],
+                        "AuthReq": true,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": false
+                },
+                {
+                        "Name": "Pairing Public Key",
+                        "Spec": "Vol 3, Part H, 3.5.6",
+                        "Code": "0x0C",
+                        "Fields": [{
+                                "KeyX": "[32]byte",
+                                "KeyY": "[32]byte"
+                        }],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Pairing DHKey Check",
+                        "Spec": "Vol 3, Part H, 3.5.7",
+                        "Code": "0x0D",
+                        "Fields": [{
+                                "DHKey Check": "[16]byte"
+                        }],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": true
+                },
+                {
+                        "Name": "Keypress Notification",
+                        "Spec": "Vol 3, Part H, 3.5.8",
+                        "Code": "0x0E",
+                        "Fields": [{
+                                "NotificationType": "uint8"
+                        }],
+                        "AuthReq": false,
+                        "KeyDist": false,
+                        "DefaultUnmarshaller": true
+                }
+        ]
+}

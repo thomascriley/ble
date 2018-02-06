@@ -7,6 +7,17 @@ const DefaultMTU = 23
 // The maximum length of an attribute value shall be 512 octets [Vol 3, Part F, 3.2.9]
 const MaxMTU = 512 + 3
 
+// MaxACLMTU is max MTU for ACL-U logical links,
+//  The default MTU was selected based on the payload
+// carried by two baseband DH5 packets (2*341=682 octets) minus the baseband ACL
+// headers (2*2=4 octets) and a 6-octet L2CAP header. Note that the L2CAP header
+// length is 4 octets (see Section 3.3.1) but for historical reasons an L2CAP header
+// length of 6 bytes is used. [Vol 3, Part A, 5.1]
+const MaxACLMTU = 672
+
+// DefaultACLMTU
+const DefaultACLMTU = 48
+
 // UUIDs ...
 var (
 	GAPUUID         = UUID16(0x1800) // Generic Access

@@ -101,6 +101,15 @@ func Scan(ctx context.Context, allowDup bool, h AdvHandler, f AdvFilter) error {
 	return defaultDevice.Scan(ctx, allowDup, h2)
 }
 
+func Inquire(ctx context.Context, numResponses int, h InqHandler) error {
+	if defaultDevice == nil {
+		return ErrDefaultDevice
+	}
+	defer untrap(trap(ctx))
+
+	return defaultDevice.Inquire(ctx, numResponses, h)
+}
+
 // Find ...
 func Find(ctx context.Context, allowDup bool, f AdvFilter) ([]Advertisement, error) {
 	if defaultDevice == nil {
@@ -121,6 +130,15 @@ func Dial(ctx context.Context, a Addr) (Client, error) {
 	}
 	defer untrap(trap(ctx))
 	return defaultDevice.Dial(ctx, a)
+}
+
+// DialRFCOMM ...
+func DialRFCOMM(ctx context.Context, a Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (RFCOMMClient, error) {
+	if defaultDevice == nil {
+		return nil, ErrDefaultDevice
+	}
+	defer untrap(trap(ctx))
+	return defaultDevice.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode, channel)
 }
 
 // Connect searches for and connects to a Peripheral which matches specified condition.

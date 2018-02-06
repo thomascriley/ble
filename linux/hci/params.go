@@ -9,6 +9,7 @@ import (
 type params struct {
 	sync.RWMutex
 
+	// LE
 	advEnable  cmd.LESetAdvertiseEnable
 	scanEnable cmd.LESetScanEnable
 	connCancel cmd.LECreateConnectionCancel
@@ -18,6 +19,15 @@ type params struct {
 	advParams  cmd.LESetAdvertisingParameters
 	scanParams cmd.LESetScanParameters
 	connParams cmd.LECreateConnection
+
+	// BR/EDR
+	inquiry         cmd.Inquiry
+	inquiryCancel   cmd.InquiryCancel
+	connBREDRParams cmd.CreateConnection
+	connCancelBREDR cmd.CreateConnectionCancel
+
+	readRemoteSupportedFeatures cmd.ReadRemoteSupportedFeatures
+	readRemoteExtendedFeatures  cmd.ReadRemoteExtendedFeatures
 }
 
 func (p *params) init() {
@@ -51,5 +61,11 @@ func (p *params) init() {
 		SupervisionTimeout:    0x0048,    // 0x000A - 0x0C80; N * 10 msec
 		MinimumCELength:       0x0000,    // 0x0000 - 0xFFFF; N * 0.625 msec
 		MaximumCELength:       0x0000,    // 0x0000 - 0xFFFF; N * 0.625 msec
+	}
+	p.connBREDRParams = cmd.CreateConnection{
+		PacketType:             0xcc18, // 0xcc18; DM1,DH1,DH3,DM3,DH5,DM5 may be used
+		PageScanRepetitionMode: 0x01,   // 0x00: R0, 0x01: R1, 0x02: R2
+		ClockOffset:            0x0000, // 0-14 bits CLKslave - CLKmaster
+		AllowRoleSwitch:        0x01,   // 0x00: not allowed, 0x01: allowed
 	}
 }
