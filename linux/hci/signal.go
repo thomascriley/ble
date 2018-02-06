@@ -29,7 +29,6 @@ func (s sigCmd) data() []byte { return s[4 : 4+s.len()] }
 // Signal ...
 func (c *Conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 
-	fmt.Printf("Signaling (request: %X, response: %X)\n", req.Code(), rsp.Code())
 	logger.Info("Signaling (request: %X, response: %X)\n", req.Code(), rsp.Code())
 
 	// The value of this timer is implementation-dependent but the minimum
@@ -59,10 +58,8 @@ func (c *Conn) Signal(req Signal, rsp Signal, timeout time.Duration) error {
 	// add a buffer of 1 in case the response occurs before we have a chance
 	// to wait on sigSent
 	c.sigSent = make(chan []byte, 1)
-	defer func() {
-		close(c.sigSent)
-		fmt.Printf("Closed signal channel\n")
-	}()
+	defer close(c.sigSent)
+
 	if _, err := c.writePDU(buf.Bytes()); err != nil {
 		return err
 	}
@@ -121,8 +118,6 @@ func (c *Conn) handleSignal(p pdu) error {
 		return nil
 	}
 
-	fmt.Printf("Received signal %02X, %02X, %#v\n", s.code(), s.id(), s)
-
 	var err error
 	for len(s) > 0 {
 		// Check if it's a supported request.
@@ -155,7 +150,6 @@ func (c *Conn) handleSignal(p pdu) error {
 			err = c.handleConfigurationResponse(s)
 		default:
 			// Check if it's a response to a sent command.
-			fmt.Printf("Received signal default %02X, %02X, %#v\n", s.code(), s.id(), s)
 			select {
 			case c.sigSent <- s:
 			default:

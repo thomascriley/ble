@@ -587,7 +587,6 @@ func (h *HCI) handleLELongTermKeyRequest(b []byte) error {
 }
 
 func (h *HCI) handleInquiryComplete(b []byte) error {
-	fmt.Printf("Inquiry Complete")
 	return nil
 }
 
@@ -595,7 +594,6 @@ func (h *HCI) handleExtendedInquiry(b []byte) error {
 	if h.inqHandler == nil {
 		return nil
 	}
-	fmt.Printf("Inquiry Extended")
 	// always a single response [Vol2, 7.7.38]
 	go h.inqHandler(newInquiry(evt.ExtendedInquiry(b), 0))
 
@@ -608,7 +606,6 @@ func (h *HCI) handleInquiryResult(b []byte) error {
 	}
 
 	e := evt.InquiryResult(b)
-	fmt.Printf("Inquiry Extended Result: %d", e.NumResponses())
 	for i := 0; i < int(e.NumResponses()); i++ {
 		go h.inqHandler(newInquiry(e, i))
 	}
@@ -622,7 +619,6 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 	}
 
 	e := evt.InquiryResultwithRSSI(b)
-	fmt.Printf("Inquiry RSSI Result: %d", e.NumResponses())
 	for i := 0; i < int(e.NumResponses()); i++ {
 		go h.inqHandler(newInquiry(e, i))
 	}

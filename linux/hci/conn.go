@@ -351,14 +351,11 @@ func (c *Conn) Disconnected() <-chan struct{} {
 
 // Close disconnects the connection by sending hci disconnect command to the device.
 func (c *Conn) Close() error {
-	fmt.Printf("Closing connection")
 	select {
 	case <-c.chDone:
-		fmt.Printf("Already closed")
 		// Return if it's already closed.
 		return nil
 	default:
-		fmt.Printf("Sending disconnect")
 		c.hci.Send(&cmd.Disconnect{
 			ConnectionHandle: c.param.ConnectionHandle(),
 			Reason:           0x13,
