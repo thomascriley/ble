@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/raff/goble/xpc"
+
 	"github.com/thomascriley/ble"
+	"github.com/raff/goble/xpc"
 )
 
 // A Client is a GATT client.
