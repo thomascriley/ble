@@ -158,6 +158,8 @@ func (h *HCI) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	h.params.connParams.PeerAddress = [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
 	if _, ok := a.(RandomAddress); ok {
 		h.params.connParams.PeerAddressType = 1
+	} else {
+		h.params.connParams.PeerAddressType = 0
 	}
 	err = h.Send(&h.params.connParams, nil)
 	h.params.Unlock()
