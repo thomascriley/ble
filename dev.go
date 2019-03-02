@@ -48,4 +48,7 @@ type Device interface {
 
 	// Dial
 	DialRFCOMM(ctx context.Context, a Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (RFCOMMClient, error)
+
+	// SocketError returns errors that require Device to redial underlying socket object
+	SocketError() <-chan error
 }

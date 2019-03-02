@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/mgutz/logxi/v1"
 	"github.com/pkg/errors"
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/hci/cmd"
@@ -339,13 +340,17 @@ func (h *HCI) sktLoop() {
 	for {
 		n, err := h.skt.Read(b)
 		if n == 0 || err != nil {
-			h.err = fmt.Errorf("skt: %s", err)
+			if errr := h.close(fmt.Errorf("skt: %s", err)); errr != nil {
+				log.Error("error closing socket: %s", errr.Error())
+			}
 			return
 		}
 		p := make([]byte, n)
 		copy(p, b)
 		if err := h.handlePkt(p); err != nil {
-			h.err = fmt.Errorf("skt: %s", err)
+			if errr := h.close(fmt.Errorf("skt: %s", err)); errr != nil {
+				log.Error("error closing socket: %s", errr.Error())
+			}
 			return
 		}
 	}
