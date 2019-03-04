@@ -1,6 +1,7 @@
 package linux
 
 import (
+	"fmt"
 	"log"
 	"time"
 
@@ -34,11 +35,13 @@ func NewDevice() (*Device, error) {
 		return nil, errors.Wrapf(err, "maximum ATT_MTU is %d", ble.MaxMTU)
 	}
 
+	d := &Device{HCI: dev, Server: s, done: make(chan error, 1)}
 	go func() {
 		for {
 			l2c, err := dev.Accept()
 			if err != nil {
-				log.Printf("can't accept: %s", err)
+				fmt.Printf("can't accept: %s\n", err)
+				d.done <- err
 				return
 			}
 
@@ -57,7 +60,7 @@ func NewDevice() (*Device, error) {
 			go as.Loop()
 		}
 	}()
-	return &Device{HCI: dev, Server: s}, nil
+	return d, nil
 }
 
 // Device ...
@@ -70,6 +73,7 @@ type Device struct {
 	inquireCancel context.CancelFunc
 	numResponses  int
 	allowDup      bool
+	done          chan error
 }
 
 // AddService adds a service to database.
@@ -252,4 +256,9 @@ func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16,
 // Address returns the listener's device address.
 func (d *Device) Address() ble.Addr {
 	return d.HCI.Addr()
+}
+
+// SocketError ...
+func (d *Device) SocketError() <-chan error {
+	return d.done
 }

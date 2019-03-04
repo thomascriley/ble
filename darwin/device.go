@@ -60,6 +60,8 @@ type Device struct {
 	// Only used in server/peripheralManager implementation
 	chars map[int]*ble.Characteristic
 	base  int
+
+	done chan error
 }
 
 // NewDevice returns a BLE device.
@@ -70,6 +72,7 @@ func NewDevice(opts ...Option) (*Device, error) {
 		chConn: make(chan *conn),
 		chars:  make(map[int]*ble.Characteristic),
 		base:   1,
+		done:   make(chan error, 1),
 	}
 	if err := d.Option(opts...); err != nil {
 		return nil, err
@@ -504,6 +507,11 @@ func (d *Device) HandleXpcEvent(event xpc.Dict, err error) {
 	default:
 		log.Printf("Unhandled event: %#v", event)
 	}
+}
+
+// SocketError ...
+func (d *Device) SocketError() <-chan error {
+	return d.done
 }
 
 func (d *Device) conn(m msg) *conn {
