@@ -61,7 +61,7 @@ type Device struct {
 	chars map[int]*ble.Characteristic
 	base  int
 
-	done chan error
+	closed chan struct{}
 }
 
 // NewDevice returns a BLE device.
@@ -72,7 +72,7 @@ func NewDevice(opts ...Option) (*Device, error) {
 		chConn: make(chan *conn),
 		chars:  make(map[int]*ble.Characteristic),
 		base:   1,
-		done:   make(chan error, 1),
+		closed: make(chan struct{}, 1),
 	}
 	if err := d.Option(opts...); err != nil {
 		return nil, err
@@ -509,9 +509,14 @@ func (d *Device) HandleXpcEvent(event xpc.Dict, err error) {
 	}
 }
 
-// SocketError ...
-func (d *Device) SocketError() <-chan error {
-	return d.done
+// Closed ...
+func (d *Device) Closed() <-chan struct{} {
+	return d.closed
+}
+
+// Error ...
+func (d *Device) Error() error {
+	return nil
 }
 
 func (d *Device) conn(m msg) *conn {
