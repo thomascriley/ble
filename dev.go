@@ -50,7 +50,7 @@ type Device interface {
 	DialRFCOMM(ctx context.Context, a Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (RFCOMMClient, error)
 
 	// Closed returns a channel that is closed when the underlying socket closes
-	Closed() <-chan error
+	Closed() <-chan struct{}
 
 	// Error returns errors from the underlying socket
 	Error() error
