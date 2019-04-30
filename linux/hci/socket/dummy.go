@@ -2,9 +2,7 @@
 
 package socket
 
-import "io"
-
 // NewSocket is a dummy function for non-Linux platform.
-func NewSocket(id int) (io.ReadWriteCloser, error) {
+func NewSocket(id int) (Closer, error) {
 	return nil, nil
 }

@@ -132,6 +132,11 @@ func (s *Socket) Read(p []byte) (int, error) {
 }
 
 func (s *Socket) Write(p []byte) (int, error) {
+	select {
+	case <-s.closed:
+		return 0, io.EOF
+	default:
+	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
 	//logger.Debug("<-%X\n", p)
@@ -145,4 +150,8 @@ func (s *Socket) Close() error {
 	s.rmu.Lock()
 	defer s.rmu.Unlock()
 	return errors.Wrap(unix.Close(s.fd), "can't close hci socket")
+}
+
+func (s *Socket) Closed() chan struct{} {
+	return s.closed
 }

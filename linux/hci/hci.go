@@ -3,7 +3,6 @@ package hci
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"sync"
 	"time"
@@ -80,7 +79,7 @@ type HCI struct {
 
 	params params
 
-	skt io.ReadWriteCloser
+	skt socket.Closer
 	id  int
 
 	// Host to Controller command flow control [Vol 2, Part E, 4.4]
@@ -211,6 +210,15 @@ func (h *HCI) Close() error {
 	return h.close(nil)
 }
 
+func (h *HCI) CloseWithError(err error) error {
+	return h.close(err)
+}
+
+// Closed ...
+func (h *HCI) Closed() chan struct{} {
+	return h.skt.Closed()
+}
+
 // Error ...
 func (h *HCI) Error() error {
 	return h.err
@@ -293,14 +301,14 @@ func (h *HCI) send(c Command) ([]byte, error) {
 	b[2] = byte(c.OpCode() >> 8)
 	b[3] = byte(c.Len())
 	if err := c.Marshal(b[4:]); err != nil {
-		h.close(fmt.Errorf("hci: failed to marshal cmd"))
+		h.close(fmt.Errorf("hci: failed to marshal cmd: %s", err))
 	}
 
 	h.sentMutex.Lock()
 	h.sent[c.OpCode()] = p
 	h.sentMutex.Unlock()
 	if n, err := h.skt.Write(b[:4+c.Len()]); err != nil {
-		h.close(fmt.Errorf("hci: failed to send cmd"))
+		h.close(fmt.Errorf("hci: failed to send cmd: %s", err))
 	} else if n != 4+c.Len() {
 		h.close(fmt.Errorf("hci: failed to send whole cmd pkt to hci socket"))
 	}

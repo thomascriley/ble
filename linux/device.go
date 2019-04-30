@@ -35,13 +35,13 @@ func NewDevice() (*Device, error) {
 		return nil, errors.Wrapf(err, "maximum ATT_MTU is %d", ble.MaxMTU)
 	}
 
-	d := &Device{HCI: dev, Server: s, done: make(chan error, 1)}
+	d := &Device{HCI: dev, Server: s}
 	go func() {
 		for {
 			l2c, err := dev.Accept()
 			if err != nil {
 				fmt.Printf("can't accept: %s\n", err)
-				d.done <- err
+				d.HCI.CloseWithError(err)
 				return
 			}
 
@@ -55,7 +55,6 @@ func NewDevice() (*Device, error) {
 			if err != nil {
 				log.Printf("can't create ATT server: %s", err)
 				continue
-
 			}
 			go as.Loop()
 		}
@@ -73,7 +72,7 @@ type Device struct {
 	inquireCancel context.CancelFunc
 	numResponses  int
 	allowDup      bool
-	done          chan error
+	error         error
 }
 
 // AddService adds a service to database.
@@ -160,9 +159,13 @@ func (d *Device) Scan(ctx context.Context, allowDup bool, h ble.AdvHandler) erro
 	d.allowDup = allowDup
 	d.scanCtx, d.scanCancel = context.WithCancel(ctx)
 	defer d.scanCancel()
-	<-d.scanCtx.Done()
-	d.HCI.StopScanning()
-	return ctx.Err()
+	select {
+	case <-d.scanCtx.Done():
+		d.HCI.StopScanning()
+		return ctx.Err()
+	case <-d.HCI.Closed():
+		return d.HCI.Error()
+	}
 }
 
 // Inquire starts inquiring for bluetooth devices broadcasting using br/edr
@@ -181,9 +184,13 @@ func (d *Device) Inquire(ctx context.Context, numResponses int, h ble.InqHandler
 	d.numResponses = numResponses
 	d.inquireCtx, d.inquireCancel = context.WithCancel(ctx)
 	defer d.inquireCancel()
-	<-d.inquireCtx.Done()
-	d.HCI.StopInquiry()
-	return ctx.Err()
+	select {
+	case <-d.inquireCtx.Done():
+		d.HCI.StopInquiry()
+		return ctx.Err()
+	case <-d.HCI.Closed():
+		return d.HCI.Error()
+	}
 }
 
 // RequestRemoteName ...
@@ -236,6 +243,11 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 	// d.HCI.Dial is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
 	// stopping the scan will improve ability to connect
+	select {
+	case <-d.HCI.Closed():
+		return nil, d.HCI.Error()
+	default:
+	}
 	d.tempStop()
 	cln, err := d.HCI.Dial(ctx, a)
 	d.tempStart()
@@ -247,6 +259,11 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8, channel uint8) (ble.RFCOMMClient, error) {
 	// d.HCI.DialRFCOMM is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
+	select {
+	case <-d.HCI.Closed():
+		return nil, d.HCI.Error()
+	default:
+	}
 	d.tempStop()
 	cln, err := d.HCI.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode, channel)
 	d.tempStart()
@@ -258,7 +275,12 @@ func (d *Device) Address() ble.Addr {
 	return d.HCI.Addr()
 }
 
-// SocketError ...
-func (d *Device) SocketError() <-chan error {
-	return d.done
+// Error ...
+func (d *Device) Error() error {
+	return d.HCI.Error()
+}
+
+// Closed ...
+func (d *Device) Closed() <-chan struct{} {
+	return d.HCI.Closed()
 }

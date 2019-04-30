@@ -65,7 +65,9 @@ func (h *HCI) RequestRemoteName(a ble.Addr) (string, error) {
 		ClockOffset:          0x0000,
 		PageScanRepitionMode: 0x00}
 	copy(req.BDADDR[:], bdaddr)
-	h.Send(req, nil)
+	if err := h.Send(req, nil); err != nil {
+		return "", fmt.Errorf("remote name request: %s", err)
+	}
 
 	select {
 	case nameEvent := <-ch:

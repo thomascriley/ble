@@ -333,9 +333,9 @@ func (c *Conn) recombine() error {
 	case cid == cidLEAtt:
 		c.chInPDU <- p
 	case cid == cidLESignal:
-		c.handleSignal(p)
+		return c.handleSignal(p)
 	case cid == cidSMP:
-		c.handleSMP(p)
+		return c.handleSMP(p)
 	case cid >= cidDynamicStart:
 		c.chInPDU <- p
 	default:
@@ -356,11 +356,10 @@ func (c *Conn) Close() error {
 		// Return if it's already closed.
 		return nil
 	default:
-		c.hci.Send(&cmd.Disconnect{
+		return c.hci.Send(&cmd.Disconnect{
 			ConnectionHandle: c.param.ConnectionHandle(),
 			Reason:           0x13,
 		}, nil)
-		return nil
 	}
 }
 
