@@ -280,6 +280,10 @@ func uuidList(u []ble.UUID, d []byte, w int) []ble.UUID {
 }
 
 func serviceDataList(sd []ble.ServiceData, d []byte, w int) []ble.ServiceData {
+	if len(d) < w || w < 2 {
+		return serviceData
+	}
+
 	serviceData := ble.ServiceData{
 		UUID: ble.UUID(d[:w]),
 		Data: make([]byte, len(d)-w),
