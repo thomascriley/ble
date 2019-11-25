@@ -281,7 +281,7 @@ func uuidList(u []ble.UUID, d []byte, w int) []ble.UUID {
 
 func serviceDataList(sd []ble.ServiceData, d []byte, w int) []ble.ServiceData {
 	if len(d) < w || w < 2 {
-		return serviceData
+		return sd
 	}
 
 	serviceData := ble.ServiceData{
