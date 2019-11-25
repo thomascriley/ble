@@ -272,7 +272,7 @@ func (p *Packet) ManufacturerData() []byte {
 
 // Utility function for creating a list of uuids.
 func uuidList(u []ble.UUID, d []byte, w int) []ble.UUID {
-	for len(d) > 0 {
+	for len(d) >= w {
 		u = append(u, ble.UUID(d[:w]))
 		d = d[w:]
 	}
