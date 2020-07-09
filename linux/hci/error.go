@@ -9,6 +9,10 @@ var (
 	ErrBusyDialing     = errors.New("busy dialing")
 	ErrBusyListening   = errors.New("busy listening")
 	ErrInvalidAddr     = errors.New("invalid address")
+	ErrUnsupportedVendorPacket = errors.New("unsupported vendor packet")
+	ErrUnsupportedScoPacket = errors.New("unsupported sco packet")
+	ErrUnsupportedCommand = errors.New("unsupported command")
+	ErrInvalidPacket = errors.New("invalid packet")
 )
 
 // HCI Command Errors  [Vol2, Part D, 1.3 ]

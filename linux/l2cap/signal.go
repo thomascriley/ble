@@ -120,7 +120,7 @@ func (s *ConfigurationRequest) Marshal() []byte {
 	for _, option := range s.ConfigurationOptions {
 		bo, err := option.MarshalBinary()
 		if err != nil {
-			logger.Error("Could not marshal option: %s", err)
+			//logger.Error("Could not marshal option: %s", err)
 			continue
 		}
 		b = append(b, bo...)
@@ -151,13 +151,13 @@ func (s *ConfigurationRequest) Unmarshal(b []byte) error {
 		case ExtendedWindowSizeOptionType:
 			option = &ExtendedWindowSizeOption{}
 		default:
-			logger.Error("Option error: unknown option type %X", optionType)
+			//logger.Error("Option error: unknown option type %X", optionType)
 			i = i + int(b[i+1]) + 2
 			continue
 		}
 
 		if err := option.UnmarshalBinary(b[i:]); err != nil {
-			logger.Error("Could not unmarshal option: %s", err)
+			//logger.Error("Could not unmarshal option: %s", err)
 			return err
 		}
 		s.ConfigurationOptions = append(s.ConfigurationOptions, option)
@@ -181,7 +181,7 @@ func (s *ConfigurationResponse) Marshal() []byte {
 	for _, option := range s.ConfigurationOptions {
 		bo, err := option.MarshalBinary()
 		if err != nil {
-			logger.Error("Error marshalling option: %s", err)
+			//logger.Error("Error marshalling option: %s", err)
 			continue
 		}
 		b = append(b, bo...)

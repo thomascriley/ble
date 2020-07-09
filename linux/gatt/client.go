@@ -1,11 +1,11 @@
 package gatt
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"log"
 	"sync"
-
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/att"
 )
@@ -22,13 +22,18 @@ func NewClient(conn ble.Conn) (*Client, error) {
 		conn: conn,
 	}
 	p.ac = att.NewClient(conn, p)
-	go p.ac.Loop()
+	p.Add(1)
+	go func() {
+		defer p.Done()
+		p.ac.Loop()
+	}()
 	return p, nil
 }
 
 // A Client is a GATT Client.
 type Client struct {
 	sync.RWMutex
+	sync.WaitGroup
 
 	profile *ble.Profile
 	name    string
@@ -38,7 +43,7 @@ type Client struct {
 	conn ble.Conn
 }
 
-// Address returns the address of the client.
+// Addr returns the address of the client.
 func (p *Client) Address() ble.Addr {
 	p.RLock()
 	defer p.RUnlock()
@@ -63,24 +68,24 @@ func (p *Client) Profile() *ble.Profile {
 	return p.profile
 }
 
-// DiscoverProfile discovers the whole hierachy of a server.
+// DiscoverProfile discovers the whole hierarchy of a server.
 func (p *Client) DiscoverProfile(force bool) (*ble.Profile, error) {
 	if p.profile != nil && !force {
 		return p.profile, nil
 	}
 	ss, err := p.DiscoverServices(nil)
 	if err != nil {
-		return nil, fmt.Errorf("can't discover services: %s\n", err)
+		return nil, fmt.Errorf("can't discover services: %s", err)
 	}
 	for _, s := range ss {
 		cs, err := p.DiscoverCharacteristics(nil, s)
 		if err != nil {
-			return nil, fmt.Errorf("can't discover characteristics: %s\n", err)
+			return nil, fmt.Errorf("can't discover characteristics: %s", err)
 		}
 		for _, c := range cs {
 			_, err := p.DiscoverDescriptors(nil, c)
 			if err != nil {
-				return nil, fmt.Errorf("can't discover descriptors: %s\n", err)
+				return nil, fmt.Errorf("can't discover descriptors: %s", err)
 			}
 		}
 	}
@@ -128,7 +133,7 @@ func (p *Client) DiscoverServices(filter []ble.UUID) ([]*ble.Service, error) {
 
 // DiscoverIncludedServices finds the included services of a service. [Vol 3, Part G, 4.5.1]
 // If filter is specified, only filtered services are returned.
-func (p *Client) DiscoverIncludedServices(ss []ble.UUID, s *ble.Service) ([]*ble.Service, error) {
+func (p *Client) DiscoverIncludedServices(_ []ble.UUID, _ *ble.Service) ([]*ble.Service, error) {
 	p.Lock()
 	defer p.Unlock()
 	return nil, nil
@@ -181,14 +186,14 @@ func (p *Client) DiscoverDescriptors(filter []ble.UUID, c *ble.Characteristic) (
 	defer p.Unlock()
 	start := c.ValueHandle + 1
 	for start <= c.EndHandle {
-		fmt, b, err := p.ac.FindInformation(start, c.EndHandle)
+		found, b, err := p.ac.FindInformation(start, c.EndHandle)
 		if err == ble.ErrAttrNotFound {
 			break
 		} else if err != nil {
 			return nil, err
 		}
 		length := 2 + 2
-		if fmt == 0x02 {
+		if found == 0x02 {
 			length = 2 + 16
 		}
 		for len(b) != 0 {
@@ -212,7 +217,13 @@ func (p *Client) DiscoverDescriptors(filter []ble.UUID, c *ble.Characteristic) (
 func (p *Client) ReadCharacteristic(c *ble.Characteristic) ([]byte, error) {
 	p.Lock()
 	defer p.Unlock()
-	return p.ac.Read(c.ValueHandle)
+	val, err := p.ac.Read(c.ValueHandle)
+	if err != nil {
+		return nil, err
+	}
+
+	c.Value = val
+	return val, nil
 }
 
 // ReadLongCharacteristic reads a characteristic value which is longer than the MTU. [Vol 3, Part G, 4.8.3]
@@ -235,6 +246,8 @@ func (p *Client) ReadLongCharacteristic(c *ble.Characteristic) ([]byte, error) {
 		}
 		buffer = append(buffer, read...)
 	}
+
+	c.Value = buffer
 	return buffer, nil
 }
 
@@ -252,7 +265,13 @@ func (p *Client) WriteCharacteristic(c *ble.Characteristic, v []byte, noRsp bool
 func (p *Client) ReadDescriptor(d *ble.Descriptor) ([]byte, error) {
 	p.Lock()
 	defer p.Unlock()
-	return p.ac.Read(d.Handle)
+	val, err := p.ac.Read(d.Handle)
+	if err != nil {
+		return nil, err
+	}
+
+	d.Value = val
+	return val, nil
 }
 
 // WriteDescriptor writes a characteristic descriptor to a server. [Vol 3, Part G, 4.12.3]
@@ -319,7 +338,7 @@ func (p *Client) setHandlers(cccdh, vh, flag uint16, h ble.NotificationHandler) 
 	case h != nil && (s.ccc&flag) != 0:
 		return nil
 	case h == nil && (s.ccc&flag) != 0:
-		s.ccc &= ^uint16(flag)
+		s.ccc &= ^flag
 	case h != nil && (s.ccc&flag) == 0:
 		s.ccc |= flag
 	}
@@ -349,10 +368,11 @@ func (p *Client) ClearSubscriptions() error {
 }
 
 // CancelConnection disconnects the connection.
-func (p *Client) CancelConnection() error {
+func (p *Client) CancelConnection(ctx context.Context) error {
+	defer p.Wait()
 	p.Lock()
 	defer p.Unlock()
-	return p.conn.Close()
+	return p.conn.Close(ctx)
 }
 
 // Disconnected returns a receiving channel, which is closed when the client disconnects.
@@ -360,6 +380,11 @@ func (p *Client) Disconnected() <-chan struct{} {
 	p.Lock()
 	defer p.Unlock()
 	return p.conn.Disconnected()
+}
+
+// Conn returns the client's current connection.
+func (p *Client) Conn() ble.Conn {
+	return p.conn
 }
 
 // HandleNotification ...

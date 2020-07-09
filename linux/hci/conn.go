@@ -2,14 +2,14 @@ package hci
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"sync"
 
-	"golang.org/x/net/context"
-
-	"github.com/pkg/errors"
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/hci/cmd"
 	"github.com/thomascriley/ble/linux/hci/evt"
@@ -24,8 +24,9 @@ type ConnectionCompleteEvent interface {
 
 // Conn ...
 type Conn struct {
+	sync.WaitGroup
+
 	hci *HCI
-	ctx context.Context
 
 	param ConnectionCompleteEvent
 
@@ -53,9 +54,6 @@ type Conn struct {
 	txMTU int
 	rxMPS int
 
-	// leFrame is set to be true when the LE Credit based flow control is used.
-	leFrame bool
-
 	// Signaling MTUs are The maximum size of command information that the
 	// L2CAP layer entity is capable of accepting.
 	// A L2CAP implementations supporting LE-U should support at least 23 bytes.
@@ -79,7 +77,7 @@ type Conn struct {
 	sigCID uint16
 
 	sigSent chan []byte
-	smpSent chan []byte
+	// smpSent chan []byte
 
 	// cfgRequest closes when the RFCOMM connection responds to a configuration
 	// request
@@ -113,6 +111,9 @@ type Conn struct {
 	smpSRand    [16]byte
 
 	chDone chan struct{}
+
+	// leFrame is set to be true when the LE Credit based flow control is used.
+	leFrame bool
 }
 
 func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
@@ -122,16 +123,15 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 	)
 
 	if _, ok := param.(evt.LEConnectionComplete); ok {
-		sigCID = uint16(cidLESignal)
+		sigCID = cidLESignal
 		defaultMTU = ble.DefaultMTU
 	} else {
-		sigCID = uint16(cidSignal)
+		sigCID = cidSignal
 		defaultMTU = ble.DefaultACLMTU
 	}
 
 	c := &Conn{
 		hci:   h,
-		ctx:   context.Background(),
 		param: param,
 
 		rxMTU: defaultMTU,
@@ -153,13 +153,14 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 		chDone: make(chan struct{}),
 	}
 
+	c.Add(1)
 	go func() {
+		defer c.Done()
 		for {
 			if err := c.recombine(); err != nil {
 				if err != io.EOF {
 					// TODO: wrap and pass the error up.
-					// err := errors.Wrap(err, "recombine failed")
-					logger.Error("recombine failed: ", "err", err)
+					fmt.Printf("recombine failed: %s\n", err)
 				}
 				close(c.chInPDU)
 				return
@@ -169,51 +170,60 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 	return c
 }
 
-// Context returns the context that is used by this Conn.
-func (c *Conn) Context() context.Context {
-	return c.ctx
-}
-
-// SetContext sets the context that is used by this Conn.
-func (c *Conn) SetContext(ctx context.Context) {
-	c.ctx = ctx
-}
-
 // Read copies re-assembled L2CAP PDUs into sdu.
 func (c *Conn) Read(sdu []byte) (n int, err error) {
-	p, ok := <-c.chInPDU
-	if !ok {
-		return 0, errors.Wrap(io.ErrClosedPipe, "input channel closed")
-	}
-	if len(p) == 0 {
-		return 0, errors.Wrap(io.ErrUnexpectedEOF, "recieved empty packet")
+	var p pdu
+	var ok bool
+
+	select {
+	case p, ok = <-c.chInPDU:
+		if !ok {
+			return 0, fmt.Errorf("input channel closed: %w", io.ErrClosedPipe)
+		}
+		if len(p) == 0 {
+			return 0, fmt.Errorf("received empty packet: %w", io.ErrUnexpectedEOF)
+		}
+	case <-c.Disconnected():
+		return 0, io.ErrClosedPipe
+	case <-c.hci.Closed():
+		return 0, io.ErrClosedPipe
 	}
 
 	// Assume it's a B-Frame.
-	slen := p.dlen()
+	sLen := p.dlen()
 	data := p.payload()
 	if c.leFrame {
 		// LE-Frame.
-		slen = leFrameHdr(p).slen()
+		sLen = leFrameHdr(p).slen()
 		data = leFrameHdr(p).payload()
 	}
-	if cap(sdu) < slen {
-		return 0, errors.Wrapf(io.ErrShortBuffer, "payload recieved exceeds sdu buffer")
+	if cap(sdu) < sLen {
+		return 0, fmt.Errorf("payload received exceeds sdu buffer: %w", io.ErrShortBuffer)
 	}
 	buf := bytes.NewBuffer(sdu)
 	buf.Reset()
-	buf.Write(data)
-	for buf.Len() < slen {
-		p := <-c.chInPDU
-		buf.Write(pdu(p).payload())
+	if _, err = buf.Write(data); err != nil {
+		return 0, fmt.Errorf("unable to write payload to buffer: %w", err)
 	}
-	return slen, nil
+	for buf.Len() < sLen {
+		select {
+		case p := <-c.chInPDU:
+			if _, err = buf.Write(p.payload()); err != nil {
+				return 0, fmt.Errorf("unable to write payload to buffer: %w", err)
+			}
+		case <-c.Disconnected():
+			return 0, io.ErrClosedPipe
+		case <-c.hci.Closed():
+			return 0, io.ErrClosedPipe
+		}
+	}
+	return sLen, nil
 }
 
 // Write breaks down a L2CAP SDU into segmants [Vol 3, Part A, 7.3.1]
 func (c *Conn) Write(sdu []byte) (int, error) {
 	if len(sdu) > c.txMTU {
-		return 0, errors.Wrap(io.ErrShortWrite, "payload exceeds mtu")
+		return 0, fmt.Errorf("payload exceeds mtu: %w",io.ErrShortWrite)
 	}
 
 	plen := len(sdu)
@@ -231,7 +241,7 @@ func (c *Conn) Write(sdu []byte) (int, error) {
 	}
 	sent, err := c.writePDU(b)
 	if err != nil {
-		return sent, err
+		return sent, fmt.Errorf("unable to write pdu: %w", err)
 	}
 	sdu = sdu[plen:]
 
@@ -243,7 +253,7 @@ func (c *Conn) Write(sdu []byte) (int, error) {
 		n, err := c.writePDU(sdu[:plen])
 		sent += n
 		if err != nil {
-			return sent, err
+			return sent, fmt.Errorf("unable to write pdu: %w", err)
 		}
 		sdu = sdu[plen:]
 	}
@@ -261,42 +271,83 @@ func (c *Conn) writePDU(pdu []byte) (int, error) {
 	c.txBuffer.LockPool()
 	defer c.txBuffer.UnlockPool()
 
+	// Fail immediately if the connection is already closed
+	// Check this with the pool locked to avoid race conditions
+	// with handleDisconnectionComplete
+	select {
+	case <-c.Disconnected():
+		return 0, io.ErrClosedPipe
+	case <-c.hci.Closed():
+		return 0, io.ErrClosedPipe
+	default:
+	}
+
 	for len(pdu) > 0 {
+
 		// Get a buffer from our pre-allocated and flow-controlled pool.
-		pkt := c.txBuffer.Get() // ACL pkt
+		pkt := c.txBuffer.Get(c.chDone) // ACL pkt
+		if pkt == nil {
+			return sent, errors.New("timed out")
+		}
+
 		flen := len(pdu)        // fragment length
 		if flen > pkt.Cap()-1-4 {
 			flen = pkt.Cap() - 1 - 4
 		}
 
 		// Prepare the Headers
-		binary.Write(pkt, binary.LittleEndian, uint8(pktTypeACLData))                         // HCI Header: pkt Type
-		binary.Write(pkt, binary.LittleEndian, uint16(c.param.ConnectionHandle()|(flags<<8))) // ACL Header: handle and flags
-		binary.Write(pkt, binary.LittleEndian, uint16(flen))                                  // ACL Header: data len
-		binary.Write(pkt, binary.LittleEndian, pdu[:flen])                                    // Append payload
+
+		// HCI Header: pkt Type
+		if err := binary.Write(pkt, binary.LittleEndian, pktTypeACLData); err != nil {
+			return 0, fmt.Errorf("unable to write ACL data: %w", err)
+		}
+		// ACL Header: handle and flags
+		if err := binary.Write(pkt, binary.LittleEndian, c.param.ConnectionHandle()|(flags<<8)); err != nil {
+			return 0, fmt.Errorf("unable to write ACL header with handle and flags: %w", err)
+		}
+		// ACL Header: data len
+		if err := binary.Write(pkt, binary.LittleEndian, uint16(flen)); err != nil {
+			return 0, fmt.Errorf("unable to write ACL header with data len: %w", err)
+		}
+		// Append payload
+		if err := binary.Write(pkt, binary.LittleEndian, pdu[:flen]); err != nil {
+			return 0, fmt.Errorf("unable to write pdu: %w", err)
+		}
 
 		// Flush the pkt to HCI
 		select {
-		case <-c.chDone:
+		case <-c.Disconnected():
+			return 0, io.ErrClosedPipe
+		case <-c.hci.Closed():
 			return 0, io.ErrClosedPipe
 		default:
 		}
 
 		if _, err := c.hci.skt.Write(pkt.Bytes()); err != nil {
-			return sent, err
+			return sent, fmt.Errorf("unable to write packet to socket: %w", err)
 		}
 		sent += flen
 
-		flags = (pbfContinuing << 4) // Set "continuing" in the boundary flags for the rest of fragments, if any.
-		pdu = pdu[flen:]             // Advence the point
+		flags = pbfContinuing << 4 // Set "continuing" in the boundary flags for the rest of fragments, if any.
+		pdu = pdu[flen:]             // Advance the point
 	}
 	return sent, nil
 }
 
 // Recombines fragments into a L2CAP PDU. [Vol 3, Part A, 7.2.2]
 func (c *Conn) recombine() error {
-	pkt, ok := <-c.chInPkt
-	if !ok {
+	var (
+		pkt packet
+		ok bool
+	)
+	select {
+	case pkt, ok = <-c.chInPkt:
+		if !ok {
+			return io.EOF
+		}
+	case <-c.hci.Closed():
+		return io.EOF
+	case <-c.Disconnected():
 		return io.EOF
 	}
 
@@ -320,10 +371,17 @@ func (c *Conn) recombine() error {
 		p = append(p, pdu(pkt.data())...)
 	}
 	for len(p) < 4+p.dlen() {
-		if pkt, ok = <-c.chInPkt; !ok || (pkt.pbf()&pbfContinuing) == 0 {
-			return io.ErrUnexpectedEOF
+		select {
+		case pkt, ok = <-c.chInPkt:
+			if !ok || (pkt.pbf()&pbfContinuing) == 0 {
+				return io.ErrUnexpectedEOF
+			}
+			p = append(p, pdu(pkt.data())...)
+		case <-c.hci.Closed():
+			return io.EOF
+		case <-c.Disconnected():
+			return io.EOF
 		}
-		p = append(p, pdu(pkt.data())...)
 	}
 
 	cid := p.cid()
@@ -331,17 +389,28 @@ func (c *Conn) recombine() error {
 	case cid == cidSignal:
 		return c.handleSignal(p)
 	case cid == cidLEAtt:
-		c.chInPDU <- p
+		return c.receivePDU(p)
 	case cid == cidLESignal:
 		return c.handleSignal(p)
 	case cid == cidSMP:
 		return c.handleSMP(p)
 	case cid >= cidDynamicStart:
-		c.chInPDU <- p
+		return c.receivePDU(p)
 	default:
-		logger.Info("recombine()", "unrecognized CID", fmt.Sprintf("%04X, [%X]", cid, p))
+		fmt.Printf("recombine: unrecognized CID: %04X, [%X]\n", cid, p)
 	}
 	return nil
+}
+
+func (c *Conn) receivePDU(p pdu) error {
+	select{
+	case c.chInPDU <- p:
+		return nil
+	case <-c.hci.Closed():
+		return io.EOF
+	case <-c.Disconnected():
+		return io.EOF
+	}
 }
 
 // Disconnected returns a receiving channel, which is closed when the connection disconnects.
@@ -350,17 +419,21 @@ func (c *Conn) Disconnected() <-chan struct{} {
 }
 
 // Close disconnects the connection by sending hci disconnect command to the device.
-func (c *Conn) Close() error {
+func (c *Conn) Close(ctx context.Context) error {
+	defer c.Wait()
 	select {
-	case <-c.chDone:
-		// Return if it's already closed.
-		return nil
+	case <-ctx.Done():
+	case <-c.Disconnected():
 	default:
-		return c.hci.Send(&cmd.Disconnect{
+		disconnectCMD := &cmd.Disconnect{
 			ConnectionHandle: c.param.ConnectionHandle(),
 			Reason:           0x13,
-		}, nil)
+		}
+		if err := c.hci.Send(ctx, disconnectCMD, nil); err != nil {
+			return fmt.Errorf("unable to send disconnect command: %w", err)
+		}
 	}
+	return nil
 }
 
 // LocalAddr returns local device's MAC address.

@@ -17,7 +17,7 @@ type frame struct {
 
 func (f *frame) Marshal(b []byte) (int, error) {
 	if len(b) < len(f.Payload)+4 {
-		return 0, fmt.Errorf("The byte array is longer than the frame size %d > %d", len(b), len(f.Payload)+4)
+		return 0, fmt.Errorf("the byte array is longer than the frame size %d > %d", len(b), len(f.Payload)+4)
 	}
 
 	// Address [5.4]
@@ -60,7 +60,7 @@ func (f *frame) Marshal(b []byte) (int, error) {
 
 func (f *frame) Unmarshal(b []byte) error {
 	if len(b) < 3 {
-		return fmt.Errorf("The frame must be at least 3 bytes long (%X)", b)
+		return fmt.Errorf("the frame must be at least 3 bytes long (%X)", b)
 	}
 
 	// Address
@@ -74,15 +74,15 @@ func (f *frame) Unmarshal(b []byte) error {
 
 	// Length
 	var length int
-	var ea uint8 = b[2] & 0x01
+	var ea = b[2] & 0x01
 	if ea == 0x01 {
 		length = int(b[2]) >> 1
 	} else if len(b) < 4 {
-		return fmt.Errorf("The frame must be at least 4 bytes long when ea==0 (%X)", b)
+		return fmt.Errorf("the frame must be at least 4 bytes long when ea==0 (%X)", b)
 	} else { // LittleEndian
 		length = int(b[2])>>1 | int(b[3])<<7
 	}
-	var i int = 3 + (int(ea)+1)%2
+	var i = 3 + (int(ea)+1)%2
 
 	if f.ControlNumber == ControlNumberUIH && f.PollFinal == 0x01 {
 		f.Credits = b[i]
@@ -91,7 +91,7 @@ func (f *frame) Unmarshal(b []byte) error {
 
 	// Payload
 	if len(b) <= i+length {
-		return fmt.Errorf("The frame must be > %d+%d bytes long (%X)", i, length, b)
+		return fmt.Errorf("the frame must be > %d+%d bytes long (%X)", i, length, b)
 	}
 	if length > 0 {
 		f.Payload = make([]byte, length)
@@ -109,7 +109,7 @@ func (f *frame) Unmarshal(b []byte) error {
 
 	f.FrameCheckSequence = b[len(b)-1]
 	if fcs := generateFCS(fcsBytes); fcs != f.FrameCheckSequence {
-		return fmt.Errorf("The frame check sequence does not match. Expected: %X, Received: %X", fcs, f.FrameCheckSequence)
+		return fmt.Errorf("the frame check sequence does not match. Expected: %X, Received: %X", fcs, f.FrameCheckSequence)
 	}
 	return nil
 }

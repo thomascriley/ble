@@ -1,23 +1,16 @@
 package ble
 
 import (
+	"context"
 	"io"
-
-	"golang.org/x/net/context"
 )
 
 // Conn implements a L2CAP connection.
 type Conn interface {
-	io.WriteCloser
+	io.ReadWriter
 
-	// Read reads service data unit from the connection
-	Read([]byte) (n int, err error)
-
-	// Context returns the context that is used by this Conn.
-	Context() context.Context
-
-	// SetContext sets the context that is used by this Conn.
-	SetContext(ctx context.Context)
+	// close takes a context for sending the disconnect command to the peripheral
+	Close(ctx context.Context) error
 
 	// LocalAddr returns local device's address.
 	LocalAddr() Addr

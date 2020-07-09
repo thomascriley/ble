@@ -12,6 +12,10 @@ var ErrEIRPacketTooLong = errors.New("max packet length is 31")
 // ErrNotImplemented means the functionality is not implemented.
 var ErrNotImplemented = errors.New("not implemented")
 
+var ErrRestartScan = errors.New("unable to restart scanning for bluetooth devices after connection")
+
+var ErrAlreadyInitialized = errors.New("already initialized")
+
 // ATTError is the error code of Attribute Protocol [Vol 3, Part F, 3.4.1.1].
 type ATTError byte
 
@@ -50,7 +54,7 @@ func (e ATTError) Error() string {
 	case i >= 0xE0 && i <= 0xFF: // Common profile and service error codes.
 		return "profile or service error"
 	}
-	return "unkown error"
+	return "unknown error"
 }
 
 var errName = map[ATTError]string{

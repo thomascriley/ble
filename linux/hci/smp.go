@@ -3,8 +3,6 @@ package hci
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
-
 	"github.com/thomascriley/ble/linux/hci/evt"
 	"github.com/thomascriley/ble/linux/smp"
 )
@@ -18,16 +16,22 @@ type SMP interface {
 
 func (c *Conn) sendSMP(p pdu) error {
 	buf := bytes.NewBuffer(make([]byte, 0))
-	binary.Write(buf, binary.LittleEndian, uint16(4+len(p)))
-	binary.Write(buf, binary.LittleEndian, cidSMP)
-	binary.Write(buf, binary.LittleEndian, p)
+	if err := binary.Write(buf, binary.LittleEndian, uint16(4+len(p))); err != nil {
+		return err
+	}
+	if err := binary.Write(buf, binary.LittleEndian, cidSMP); err != nil {
+		return err
+	}
+	if err := binary.Write(buf, binary.LittleEndian, p); err != nil {
+		return err
+	}
 	_, err := c.writePDU(buf.Bytes())
-	logger.Debug("smp", "send", fmt.Sprintf("[%X]", buf.Bytes()))
+	//logger.Debug("smp", "send", fmt.Sprintf("[%X]", buf.Bytes()))
 	return err
 }
 
 func (c *Conn) handleSMP(p pdu) error {
-	logger.Debug("smp", "recv", fmt.Sprintf("[%X]", p))
+	//logger.Debug("smp", "recv", fmt.Sprintf("[%X]", p))
 	code := p[0]
 	//	payload := p[1:]
 	/*
@@ -142,7 +146,7 @@ func (c *Conn) handlePairingRequest(req *smp.PairingRequest) (resp SMP, err erro
 	return c.smpPairingResp, nil
 }
 
-func (c *Conn) handlePairingResponse(presp *smp.PairingResponse) (resp SMP, err error) {
+func (c *Conn) handlePairingResponse(_ *smp.PairingResponse) (resp SMP, err error) {
 	c.smpInitiator = true
 	c.smpMRand = smp.GenerateRand()
 	if c.smpMConfirm, err = c.generateConfirmKey(c.smpMRand); err != nil {
@@ -173,7 +177,7 @@ func (c *Conn) generateConfirmKey(rand [16]byte) ([16]byte, error) {
 
 func (c *Conn) ia() (addr [6]byte) {
 	if c.smpInitiator {
-		copy(addr[:], []byte(c.hci.addr))
+		copy(addr[:], c.hci.addr)
 	}
 	return c.param.PeerAddress()
 }
@@ -192,7 +196,7 @@ func (c *Conn) ra() (addr [6]byte) {
 	if c.smpInitiator {
 		return c.param.PeerAddress()
 	}
-	copy(addr[:], []byte(c.hci.addr))
+	copy(addr[:], c.hci.addr)
 	return
 }
 

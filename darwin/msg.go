@@ -12,7 +12,12 @@ func (m msg) args() xpc.Dict { return xpc.Dict(m).MustGetDict("kCBMsgArgs") }
 func (m msg) advertisementData() xpc.Dict {
 	return xpc.Dict(m).MustGetDict("kCBMsgArgAdvertisementData")
 }
-func (m msg) attMTU() int          { return xpc.Dict(m).MustGetInt("kCBMsgArgATTMTU") }
+
+const macOSXDefaultMTU = 23
+
+// Uses GetInt as oppose to MustGetInt due to OSX not supporting 'kCBMsgArgATTMTU'.
+// Issue #29
+func (m msg) attMTU() int          { return xpc.Dict(m).GetInt("kCBMsgArgATTMTU", macOSXDefaultMTU) }
 func (m msg) attWrites() xpc.Array { return xpc.Dict(m).MustGetArray("kCBMsgArgATTWrites") }
 func (m msg) attributeID() int     { return xpc.Dict(m).MustGetInt("kCBMsgArgAttributeID") }
 func (m msg) characteristicHandle() int {
@@ -35,7 +40,7 @@ func (m msg) deviceUUID() xpc.UUID       { return xpc.Dict(m).MustGetUUID("kCBMs
 func (m msg) ignoreResponse() int        { return xpc.Dict(m).MustGetInt("kCBMsgArgIgnoreResponse") }
 func (m msg) offset() int                { return xpc.Dict(m).MustGetInt("kCBMsgArgOffset") }
 func (m msg) isNotification() int        { return xpc.Dict(m).GetInt("kCBMsgArgIsNotification", 0) }
-func (m msg) result() int                { return xpc.Dict(m).MustGetInt("kCBMsgArgResult") }
+func (m msg) result() int                { return xpc.Dict(m).GetInt("kCBMsgArgResult", 0) }
 func (m msg) state() int                 { return xpc.Dict(m).MustGetInt("kCBMsgArgState") }
 func (m msg) rssi() int                  { return xpc.Dict(m).MustGetInt("kCBMsgArgData") }
 func (m msg) transactionID() int         { return xpc.Dict(m).MustGetInt("kCBMsgArgTransactionID") }

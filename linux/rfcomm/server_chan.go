@@ -29,11 +29,11 @@ func (s *serverChannels) Add(c *Client) (uint8, error) {
 			return i, nil
 		}
 	}
-	return 0, errors.New("There is no more room to add another server channel")
+	return 0, errors.New("there is no more room to add another server channel")
 }
 
 func (s *serverChannels) Remove(serverChannel uint8) {
 	s.Lock()
-	defer s.Unlock()
 	delete(s.channels, serverChannel)
+	s.Unlock()
 }

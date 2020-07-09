@@ -1,6 +1,9 @@
 package ble
 
-import "golang.org/x/net/context"
+import (
+	"context"
+	"time"
+)
 
 // Device ...
 type Device interface {
@@ -14,8 +17,11 @@ type Device interface {
 	// It removes all currently added services, if any.
 	SetServices(svcs []*Service) error
 
-	// Stop detatch the GATT server from a peripheral device.
-	Stop() error
+	// Closed the underlying hci socket and waits for all connections to close and goroutines to finish
+	Close() error
+
+	// Advertise advertises a given Advertisement
+	Advertise(ctx context.Context, adv Advertisement) error
 
 	// AdvertiseNameAndServices advertises device name, and specified service UUIDs.
 	// It tres to fit the UUIDs in the advertising packet as much as possi
@@ -38,20 +44,20 @@ type Device interface {
 	Scan(ctx context.Context, allowDup bool, h AdvHandler) error
 
 	// Inquire starts a BR/EDR scan
-	Inquire(ctx context.Context, numResponses int, h InqHandler) error
+	Inquire(ctx context.Context, interval time.Duration, numResponses int, h InqHandler) error
 
 	// RequestRemoteName queries the remote BR/EDR device for its name
-	RequestRemoteName(a Addr) (string, error)
+	RequestRemoteName(ctx context.Context, a Addr) (string, error)
 
 	// Dial ...
-	Dial(ctx context.Context, a Addr) (Client, error)
+	DialBLE(context.Context, Addr, AddressType) (ClientBLE, error)
 
 	// Dial
-	DialRFCOMM(ctx context.Context, a Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (RFCOMMClient, error)
+	DialRFCOMM(ctx context.Context, a Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (ClientRFCOMM, error)
+
+	// Initializes the underlying hardware
+	Initialize(context.Context) error
 
 	// Closed returns a channel that is closed when the underlying socket closes
 	Closed() <-chan struct{}
-
-	// Error returns errors from the underlying socket
-	Error() error
 }

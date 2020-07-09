@@ -7,6 +7,8 @@ type InqHandler func(i Inquiry)
 type Inquiry interface {
 	Address() Addr
 
+	AddressType() AddressType
+
 	PageScanRepetitionMode() uint8
 
 	ClassOfDevice() [3]byte

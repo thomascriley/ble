@@ -19,6 +19,7 @@ type Advertisement interface {
 
 	RSSI() int
 	Address() Addr
+	AddressType() AddressType
 }
 
 // ServiceData ...

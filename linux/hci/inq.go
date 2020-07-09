@@ -55,6 +55,10 @@ func (i *Inquiry) Address() ble.Addr {
 	return net.HardwareAddr([]byte{b[5], b[4], b[3], b[2], b[1], b[0]})
 }
 
+func (i *Inquiry) AddressType() ble.AddressType {
+	return ble.AddressTypePublic
+}
+
 func (i *Inquiry) ExtendedInquiryResponse() [240]byte {
 	return i.e.ExtendedInquiryResponse()
 }

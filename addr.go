@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+type AddressType uint8
+
+const (
+	AddressTypePublic AddressType = iota
+	AddressTypeRandom
+)
+
 // Addr represents a network end point address.
 // It's MAC address on Linux or Device UUID on OS X.
 type Addr interface {

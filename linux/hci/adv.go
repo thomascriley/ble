@@ -2,16 +2,10 @@ package hci
 
 import (
 	"net"
-
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/adv"
 	"github.com/thomascriley/ble/linux/hci/evt"
 )
-
-// RandomAddress is a Random Device Address.
-type RandomAddress struct {
-	ble.Addr
-}
 
 // [Vol 6, Part B, 4.4.2] [Vol 3, Part C, 11]
 const (
@@ -97,14 +91,10 @@ func (a *Advertisement) RSSI() int {
 	return int(a.e.RSSI(a.i))
 }
 
-// Address returns the address of the remote peripheral.
+// Addr returns the address of the remote peripheral.
 func (a *Advertisement) Address() ble.Addr {
 	b := a.e.Address(a.i)
-	addr := net.HardwareAddr([]byte{b[5], b[4], b[3], b[2], b[1], b[0]})
-	if a.e.AddressType(a.i) == 1 {
-		return RandomAddress{addr}
-	}
-	return addr
+	return net.HardwareAddr([]byte{b[5], b[4], b[3], b[2], b[1], b[0]})
 }
 
 // EventType returns the event type of Advertisement.
@@ -115,8 +105,8 @@ func (a *Advertisement) EventType() uint8 {
 
 // AddressType returns the address type of the Advertisement.
 // This is linux sepcific.
-func (a *Advertisement) AddressType() uint8 {
-	return a.e.AddressType(a.i)
+func (a *Advertisement) AddressType() ble.AddressType {
+	return ble.AddressType(a.e.AddressType(a.i))
 }
 
 // Data returns the advertising data of the packet.

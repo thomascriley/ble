@@ -45,11 +45,19 @@ func (c *Client) UnlockPool() {
 }
 
 // Get returns a buffer from the shared buffer pool.
-func (c *Client) Get() *bytes.Buffer {
-	b := <-c.p.ch
-	b.Reset()
-	c.sent <- b
-	return b
+func (c *Client) Get(ch chan struct{}) *bytes.Buffer {
+	select {
+	case <-ch:
+		return nil
+	case b := <-c.p.ch:
+		b.Reset()
+		select {
+		case <-ch:
+			return nil
+		case c.sent <- b:
+		}
+		return b
+	}
 }
 
 // Put puts the oldest sent buffer back to the shared pool.

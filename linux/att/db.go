@@ -25,7 +25,7 @@ func (r *DB) idx(h int) int {
 	if h < int(r.base) {
 		return tooSmall
 	}
-	if int(h) >= int(r.base)+len(r.attrs) {
+	if h >= int(r.base)+len(r.attrs) {
 		return tooLarge
 	}
 	return h - int(r.base)
@@ -144,14 +144,13 @@ func genDescAttr(d *ble.Descriptor, h uint16) *attr {
 
 // DumpAttributes ...
 func DumpAttributes(aa []*attr) {
-	logger.Debug("server", "db", "Generating attribute table:")
-	logger.Debug("server", "db", "handle   endh   type")
+	fmt.Println("server: db: Generating attribute table")
 	for _, a := range aa {
 		if a.v != nil {
-			logger.Debug("server", "db", fmt.Sprintf("0x%04X 0x%04X 0x%s [% X]", a.h, a.endh, a.typ, a.v))
+			fmt.Printf("server: db: 0x%04X 0x%04X 0x%s [% X]\n", a.h, a.endh, a.typ, a.v)
 			continue
 		}
-		logger.Debug("server", "db", fmt.Sprintf("0x%04X 0x%04X 0x%s", a.h, a.endh, a.typ))
+		fmt.Printf("server: db: 0x%04X 0x%04X 0x%s\n", a.h, a.endh, a.typ)
 	}
 }
 
