@@ -1,6 +1,7 @@
 package darwin
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -26,7 +27,7 @@ func NewClient(c ble.Conn) (*Client, error) {
 }
 
 // Addr returns UUID of the remote peripheral.
-func (cln *Client) Addr() ble.Addr {
+func (cln *Client) Address() ble.Addr {
 	return cln.conn.RemoteAddr()
 }
 
@@ -324,7 +325,7 @@ func (cln *Client) ClearSubscriptions() error {
 }
 
 // CancelConnection disconnects the connection.
-func (cln *Client) CancelConnection() error {
+func (cln *Client) CancelConnection(ctx context.Context) error {
 	rsp, err := cln.conn.sendReq(cmdDisconnect, xpc.Dict{"kCBMsgArgDeviceUUID": cln.id})
 	if err != nil {
 		return err

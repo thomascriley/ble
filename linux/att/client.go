@@ -48,7 +48,7 @@ func (c *Client) take() (*[]byte,error) {
 	select {
 	case txBuf := <-c.chTxBuf:
 		return &txBuf, nil
-	case <-c.Connection().Disconnected():
+	case <-c.l2c.Disconnected():
 		return nil, errors.New("disconnected")
 	}
 }
@@ -56,7 +56,7 @@ func (c *Client) take() (*[]byte,error) {
 func (c *Client) release(txBuf *[]byte) {
 	select {
 	case c.chTxBuf <- *txBuf :
-	case <-c.Connection().Disconnected():
+	case <-c.l2c.Disconnected():
 	}
 }
 
@@ -341,7 +341,7 @@ func (c *Client) ReadByGroupType(starth, endh uint16, uuid ble.UUID) (int, []byt
 	// Acquire and reuse the txBuf, and release it after usage.
 	txBuf, err := c.take()
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, fmt.Errorf("failed to aquire txBuf: %w", err)
 	}
 	defer c.release(txBuf)
 
@@ -353,7 +353,7 @@ func (c *Client) ReadByGroupType(starth, endh uint16, uuid ble.UUID) (int, []byt
 
 	b, err := c.sendReq(req)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, fmt.Errorf("failed to send request: %w", err)
 	}
 
 	// Convert and validate the response.
@@ -562,7 +562,7 @@ func (c *Client) sendReq(b []byte) (rsp []byte, err error) {
 				return nil, fmt.Errorf( "ATT request failed: %w", err)
 			}
 		case <-c.l2c.Disconnected():
-			return nil, errors.New("disconnected")
+			return nil, errors.New("l2c disconnected")
 		}
 	}
 }

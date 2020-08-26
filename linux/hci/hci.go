@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/thomascriley/ble"
+	"github.com/thomascriley/ble/log"
 	"github.com/thomascriley/ble/linux/hci/cmd"
 	"github.com/thomascriley/ble/linux/hci/evt"
 	"github.com/thomascriley/ble/linux/hci/socket"
@@ -55,6 +56,9 @@ func NewHCI() *HCI {
 		evtMutex: &sync.RWMutex{},
 		subh:     map[int]handlerFn{},
 		subMutex: &sync.RWMutex{},
+
+		adHist: make(map[string]*Advertisement,0),
+		adTimes: make(map[string]time.Time,0),
 
 		dynamicCID: cidDynamicStart,
 
@@ -192,10 +196,11 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 	h.nameHandlers = &nameHandlers{handlers: make(map[ble.Addr]chan *nameEvent, 0)}
 
 	if h.skt, err = socket.NewSocket(h.id); err != nil {
-		return err
+		return fmt.Errorf("unable to create new socket: %w", err)
 	}
 	h.Add(1)
 	go func(){
+		defer h.Close()
 		defer h.Done()
 		h.sktLoop()
 	}()
@@ -203,6 +208,8 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 	if err := h.setAllowedCommands(1); err != nil {
 		return fmt.Errorf("unable to set allowed commands: %w", err)
 	}
+
+	log.Print("BLE HCI: hci init")
 	if err := h.init(ctx); err != nil {
 		return err
 	}
@@ -211,9 +218,17 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 	// HCI header (1 Byte) + ACL Data Header (4 bytes) + L2CAP PDU (or fragment)
 	h.pool = NewPool(1+4+h.bufSize, h.bufCnt-1)
 
-	if err := h.Send(ctx, &h.params.advParams, nil); err != nil {
-		return fmt.Errorf("unable to send advertising params: %w", err)
+	h.params.RLock()
+	defer h.params.RUnlock()
+
+	if h.params.advEnable.AdvertisingEnable == 1 {
+		log.Print("BLE HCI: send adv params")
+		if err := h.Send(ctx, &h.params.advParams, nil); err != nil {
+			return fmt.Errorf("unable to send advertising params: %w", err)
+		}
 	}
+
+	log.Print("BLE HCI: send scan params")
 	if err := h.Send(ctx, &h.params.scanParams, nil); err != nil {
 		return fmt.Errorf("unable to send scan params: %w", err)
 	}
@@ -230,6 +245,7 @@ func (h *HCI) Close() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
 		defer cancel()
 
+		log.Print("BLE HCI: closing connections")
 		// close connections to all peripherals
 		h.muConns.Lock()
 		for _, c := range h.conns {
@@ -242,10 +258,12 @@ func (h *HCI) Close() error {
 		}
 		h.muConns.Unlock()
 
+		log.Print("BLE HCI: closing socket")
 		if err := h.skt.Close(); err != nil {
 			errored = append(errored, err.Error())
 		}
 	}
+	log.Print("BLE HCI: closed")
 	if len(errored) > 0 {
 		return fmt.Errorf("unable to nicely close: %s", strings.Join(errored, ", "))
 	}
@@ -264,10 +282,12 @@ func (h *HCI) Closed() chan struct{} {
 }
 
 func (h *HCI) init(ctx context.Context) error {
+	log.Print("BLE HCI: reseting")
 	if err := h.Send(ctx, &cmd.Reset{}, nil); err!= nil {
 		return fmt.Errorf("unable to reset: %w", err)
 	}
 
+	log.Print("BLE HCI: read db addr")
 	ReadBDADDRRP := cmd.ReadBDADDRRP{}
 	if err := h.Send(ctx, &cmd.ReadBDADDR{}, &ReadBDADDRRP); err != nil {
 		return fmt.Errorf("unable to read BDADDR: %w", err)
@@ -276,6 +296,7 @@ func (h *HCI) init(ctx context.Context) error {
 	a := ReadBDADDRRP.BDADDR
 	h.addr = []byte{a[5], a[4], a[3], a[2], a[1], a[0]}
 
+	log.Print("BLE HCI: read buffer size")
 	ReadBufferSizeRP := cmd.ReadBufferSizeRP{}
 	if err := h.Send(ctx, &cmd.ReadBufferSize{}, &ReadBufferSizeRP); err != nil {
 		return fmt.Errorf("unable to read buffer size: %w", err)
@@ -285,6 +306,7 @@ func (h *HCI) init(ctx context.Context) error {
 	h.bufCnt = int(ReadBufferSizeRP.HCTotalNumACLDataPackets)
 	h.bufSize = int(ReadBufferSizeRP.HCACLDataPacketLength)
 
+	log.Print("BLE HCI: le read buffer size")
 	LEReadBufferSizeRP := cmd.LEReadBufferSizeRP{}
 	if err := h.Send(ctx, &cmd.LEReadBufferSize{}, &LEReadBufferSizeRP); err != nil {
 		return fmt.Errorf("unable to read le buffer size: %w", err)
@@ -296,6 +318,8 @@ func (h *HCI) init(ctx context.Context) error {
 		h.bufSize = int(LEReadBufferSizeRP.HCLEDataPacketLength)
 	}
 
+	log.Print("BLE HCI: le read advertising channel")
+
 	LEReadAdvertisingChannelTxPowerRP := cmd.LEReadAdvertisingChannelTxPowerRP{}
 	if err := h.Send(ctx, &cmd.LEReadAdvertisingChannelTxPower{}, &LEReadAdvertisingChannelTxPowerRP); err != nil {
 		return fmt.Errorf("unable to read advertising channel tx power: %w", err)
@@ -303,31 +327,39 @@ func (h *HCI) init(ctx context.Context) error {
 
 	h.txPwrLv = int(LEReadAdvertisingChannelTxPowerRP.TransmitPowerLevel)
 
+	log.Print("BLE HCI: le set event mask")
 	LESetEventMaskRP := cmd.LESetEventMaskRP{}
 	if err := h.Send(ctx, &cmd.LESetEventMask{LEEventMask: 0x000000000000001F}, &LESetEventMaskRP); err != nil {
 		return fmt.Errorf("unable to set le event mask: %w", err)
 	}
 
+	log.Print("BLE HCI: set event mask")
 	SetEventMaskRP := cmd.SetEventMaskRP{}
 	if err := h.Send(ctx, &cmd.SetEventMask{EventMask: 0x3dbff807fffbffff}, &SetEventMaskRP); err != nil {
 		return fmt.Errorf("unable to set event mask: %w", err)
 	}
 
+	log.Print("BLE HCI: write le host support")
 	WriteLEHostSupportRP := cmd.WriteLEHostSupportRP{}
 	if err := h.Send(ctx, &cmd.WriteLEHostSupport{LESupportedHost: 1, SimultaneousLEHost: 0}, &WriteLEHostSupportRP); err != nil {
 		return fmt.Errorf("unable to write le host support: %w", err)
 	}
 
+	log.Print("BLE HCI: done init")
 	return nil
 }
 
 // Send ...
 func (h *HCI) Send(ctx context.Context, c Command, r CommandRP) error {
+	log.Printf("BLE HCI: Sending command %d with response %T", c.OpCode(), r)
 	// reuse the byte array, marshalling the new command into it
 	var b []byte
 	select {
 	case b = <-h.chCmdBufs:
 	case <-h.Closed():
+		if h.err == nil {
+			return fmt.Errorf("hci device disconnected")
+		}
 		return fmt.Errorf("hci device disconnected: %w", h.err)
 	case <-ctx.Done():
 		return ctx.Err()
@@ -371,8 +403,11 @@ func (h *HCI) Send(ctx context.Context, c Command, r CommandRP) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return errors.New("hci: no response to command: timed out")
+			return fmt.Errorf("hci: no response to command: %w", ctx.Err())
 		case <-h.Closed():
+			if h.err == nil {
+				return errors.New("hci: no response to command: disconnected")
+			}
 			return fmt.Errorf("hci: no response to command: disconnected: %w", h.err)
 		case b := <-p.done:
 			if len(b) > 0 && b[0] != 0x00 {
@@ -381,7 +416,7 @@ func (h *HCI) Send(ctx context.Context, c Command, r CommandRP) error {
 			if r != nil {
 				if err := r.Unmarshal(b); err != nil {
 					// assume this is due to receiving a response of previous command that timed out
-					fmt.Printf("could not unmarshal bytes into `%T` - %02X: %s",r, b, err)
+					log.Printf("could not unmarshal bytes into `%T` - %02X: %s",r, b, err)
 					continue
 				}
 			}
@@ -412,8 +447,6 @@ func (h *HCI) subHandler(code int) (handlerFn, bool) {
 }
 
 func (h *HCI) sktLoop() {
-	defer func(){_ = h.Close()}()
-
 	var (
 		n int
 		err error
@@ -434,11 +467,14 @@ func (h *HCI) sktLoop() {
 		// ignore some select errors, others should be printed for future work
 		switch {
 		case err == nil:
-		case errors.Is(err,ErrUnknownCommand):
+		case errors.Is(err,ErrUnknownCommand), errors.Is(err,ErrUnsupportedCommand):
+			if err2 := h.setAllowedCommands(1); err2 != nil {
+				log.Printf("unable to set allowed commands `%s` after error: %s", err2, err)
+			}
 		case errors.Is(err,ErrUnsupportedVendorPacket):
 		case errors.Is(err,ErrUnsupportedScoPacket):
 		default:
-			fmt.Printf("skt: %s\n", err)
+			log.Printf("skt: %s\n", err)
 		}
 	}
 }
@@ -463,6 +499,8 @@ func (h *HCI) handlePkt(b []byte) error {
 }
 
 func (h *HCI) handleACL(b []byte) error {
+	log.PacketPrint("BLE HCI: handling packet acl")
+
 	handle := packet(b).handle()
 	h.muConns.Lock()
 	c, ok := h.conns[handle]
@@ -474,12 +512,16 @@ func (h *HCI) handleACL(b []byte) error {
 	case c.chInPkt <- b:
 		return nil
 	case <- h.Closed():
+		if h.err == nil {
+			return errors.New("hci: no response to command: disconnected")
+		}
 		return fmt.Errorf("hci device disconnected: %w", h.err)
 	}
 }
 
 func (h *HCI) handleEvt(b []byte) error {
 	code, plen := int(b[0]), int(b[1])
+	log.PacketPrintf("BLE HCI: handling packet event: %d", code)
 	if plen != len(b[2:]) {
 		return fmt.Errorf("invalid event packet: % X", b)
 	}
@@ -517,17 +559,19 @@ func (h *HCI) handleLEMeta(b []byte) error {
 }
 
 func (h *HCI) handleLEAdvertisingReport(b []byte) error {
+	log.AdvPrint("BLE HCI: handle LE advertising report")
+	defer log.AdvPrint("BLE HCI: handle LE advertising report")
 	if h.advHandler == nil {
 		return nil
 	}
 
 	e := evt.LEAdvertisingReport(b)
 	for i := 0; i < int(e.NumReports()); i++ {
+		log.AdvPrintf("BLE HCI: adv %02X - %d", e.Address(i), e.EventType(i))
+
 		var a *Advertisement
 		switch e.EventType(i) {
-		case evtTypAdvInd:
-			fallthrough
-		case evtTypAdvScanInd:
+		case evtTypAdvScanInd, evtTypAdvInd:
 			a = newAdvertisement(e, i)
 			h.adMutex.Lock()
 			h.adHist[a.Address().String()] = a
@@ -538,11 +582,13 @@ func (h *HCI) handleLEAdvertisingReport(b []byte) error {
 					delete(h.adHist, addr)
 				}
 			}
+			h.adMutex.Unlock()
 		case evtTypScanRsp:
+			var ok bool
 			sr := newAdvertisement(e, i)
-			a, ok := h.adHist[sr.Address().String()]
+
 			// Got a SR without having received an associated AD before?
-			if !ok {
+			if a, ok = h.adHist[sr.Address().String()]; !ok {
 				return fmt.Errorf("received scan response %s with no associated Advertising Data packet", sr.Address())
 			}
 			a.setScanResponse(sr)
@@ -551,10 +597,12 @@ func (h *HCI) handleLEAdvertisingReport(b []byte) error {
 		}
 
 		h.Add(1)
-		go func() {
+		go func(advertisement *Advertisement) {
+			log.AdvPrintf("BLE HCI: handling adv %s", advertisement.Address())
+			defer log.AdvPrintf("BLE HCI: handled adv %s", advertisement.Address())
 			defer h.Done()
 			h.advHandler(a)
-		}()
+		}(a)
 	}
 
 	return nil
@@ -573,7 +621,7 @@ func (h *HCI) handleCommandComplete(b []byte) error {
 	}
 	p, found := h.sentPkt(int(e.CommandOpcode()))
 	if !found {
-		return fmt.Errorf("can't find the cmd for CommandCompleteEP: % X", e)
+		return fmt.Errorf("can't find the cmd for CommandCompleteEP (%w): % X", ErrUnknownCommand, e)
 	}
 	select {
 	case p.done <- e.ReturnParameters():
@@ -692,9 +740,6 @@ func (h *HCI) handleDisconnectionComplete(b []byte) error {
 				defer h.Done()
 				if err := h.Send(context.Background(), &h.params.advEnable, nil); err != nil {
 					h.err = fmt.Errorf("unable to reenable advertising: %w", err)
-					if err = h.Close(); err != nil {
-						h.err = fmt.Errorf("%w and unable to close device: %s", h.err, err)
-					}
 				}
 			}()
 		}
@@ -707,7 +752,7 @@ func (h *HCI) handleDisconnectionComplete(b []byte) error {
 			close(c.chDone)
 		}
 	}
-	close(c.chInPkt)
+
 	// When a connection disconnects, all the sent packets and weren't acked yet
 	// will be recycled. [Vol2, Part E 4.1.1]
 	//

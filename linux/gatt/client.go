@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"sync"
 	"github.com/thomascriley/ble"
+	"github.com/thomascriley/ble/log"
 	"github.com/thomascriley/ble/linux/att"
 )
 
@@ -20,6 +20,7 @@ func NewClient(conn ble.Conn) (*Client, error) {
 	p := &Client{
 		subs: make(map[uint16]*sub),
 		conn: conn,
+		addr: conn.LocalAddr().String(),
 	}
 	p.ac = att.NewClient(conn, p)
 	p.Add(1)
@@ -41,10 +42,35 @@ type Client struct {
 
 	ac   *att.Client
 	conn ble.Conn
+	
+	addr string
 }
 
+func (p *Client) String() string { return p.addr }
+
+func (p *Client) RLock() {
+	log.Printf("BLE GATT: %s: read lock", p)
+	p.RWMutex.RLock()
+}
+
+func (p *Client) RUnlock() {
+	log.Printf("BLE GATT: %s: read unlock", p)
+	p.RWMutex.RUnlock()
+}
+
+func (p *Client) Lock() {
+	log.Printf("BLE GATT: %s: lock", p)
+	p.RWMutex.Lock()
+}
+
+func (p *Client) Unlock() {
+	log.Printf("BLE GATT: %s: unlocking", p)
+	p.RWMutex.Unlock()
+}
 // Addr returns the address of the client.
 func (p *Client) Address() ble.Addr {
+	log.Printf("BLE GATT: %s: getting address", p)
+	defer log.Printf("BLE GATT: %s: got address", p)
 	p.RLock()
 	defer p.RUnlock()
 	return p.conn.RemoteAddr()
@@ -52,6 +78,8 @@ func (p *Client) Address() ble.Addr {
 
 // Name returns the name of the client.
 func (p *Client) Name() string {
+	log.Printf("BLE GATT: %s: getting name", p)
+	defer log.Printf("BLE GATT: %s: got name", p)
 	p.RLock()
 	defer p.RUnlock()
 	return p.name
@@ -63,6 +91,8 @@ func (p *Client) Connection() ble.Conn {
 
 // Profile returns the discovered profile.
 func (p *Client) Profile() *ble.Profile {
+	log.Printf("BLE GATT: %s: getting profile", p)
+	defer log.Printf("BLE GATT: %s: got profile", p)
 	p.RLock()
 	defer p.RUnlock()
 	return p.profile
@@ -70,6 +100,7 @@ func (p *Client) Profile() *ble.Profile {
 
 // DiscoverProfile discovers the whole hierarchy of a server.
 func (p *Client) DiscoverProfile(force bool) (*ble.Profile, error) {
+	log.Printf("BLE GATT: %s: discovering profile", p)
 	if p.profile != nil && !force {
 		return p.profile, nil
 	}
@@ -90,12 +121,14 @@ func (p *Client) DiscoverProfile(force bool) (*ble.Profile, error) {
 		}
 	}
 	p.profile = &ble.Profile{Services: ss}
+	log.Printf("BLE GATT: %s: discovered profile", p)
 	return p.profile, nil
 }
 
 // DiscoverServices finds all the primary services on a server. [Vol 3, Part G, 4.4.1]
 // If filter is specified, only filtered services are returned.
 func (p *Client) DiscoverServices(filter []ble.UUID) ([]*ble.Service, error) {
+	log.Printf("BLE GATT: %s: discovering services", p)
 	p.Lock()
 	defer p.Unlock()
 	if p.profile == nil {
@@ -105,10 +138,11 @@ func (p *Client) DiscoverServices(filter []ble.UUID) ([]*ble.Service, error) {
 	for {
 		length, b, err := p.ac.ReadByGroupType(start, 0xFFFF, ble.PrimaryServiceUUID)
 		if err == ble.ErrAttrNotFound {
+			log.Printf("BLE GATT: %s: discovered %d services", p, len(p.profile.Services))
 			return p.profile.Services, nil
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to read by group type: %w", err)
 		}
 		for len(b) != 0 {
 			h := binary.LittleEndian.Uint16(b[:2])
@@ -123,6 +157,7 @@ func (p *Client) DiscoverServices(filter []ble.UUID) ([]*ble.Service, error) {
 				p.profile.Services = append(p.profile.Services, s)
 			}
 			if endh == 0xFFFF {
+				log.Printf("BLE GATT: %s: discovered %d services", p, len(p.profile.Services))
 				return p.profile.Services, nil
 			}
 			start = endh + 1
@@ -134,6 +169,7 @@ func (p *Client) DiscoverServices(filter []ble.UUID) ([]*ble.Service, error) {
 // DiscoverIncludedServices finds the included services of a service. [Vol 3, Part G, 4.5.1]
 // If filter is specified, only filtered services are returned.
 func (p *Client) DiscoverIncludedServices(_ []ble.UUID, _ *ble.Service) ([]*ble.Service, error) {
+	log.Printf("BLE GATT: %s: discovering included services", p)
 	p.Lock()
 	defer p.Unlock()
 	return nil, nil
@@ -142,6 +178,7 @@ func (p *Client) DiscoverIncludedServices(_ []ble.UUID, _ *ble.Service) ([]*ble.
 // DiscoverCharacteristics finds all the characteristics within a service. [Vol 3, Part G, 4.6.1]
 // If filter is specified, only filtered characteristics are returned.
 func (p *Client) DiscoverCharacteristics(filter []ble.UUID, s *ble.Service) ([]*ble.Characteristic, error) {
+	log.Printf("BLE GATT: %s: %s: discovering characteristics in service", p, s.UUID)
 	p.Lock()
 	defer p.Unlock()
 	start := s.Handle
@@ -176,12 +213,14 @@ func (p *Client) DiscoverCharacteristics(filter []ble.UUID, s *ble.Service) ([]*
 			b = b[length:]
 		}
 	}
+	log.Printf("BLE GATT: %s: %s: discovered %d characteristics in service", p, s.UUID, len(s.Characteristics))
 	return s.Characteristics, nil
 }
 
 // DiscoverDescriptors finds all the descriptors within a characteristic. [Vol 3, Part G, 4.7.1]
 // If filter is specified, only filtered descriptors are returned.
 func (p *Client) DiscoverDescriptors(filter []ble.UUID, c *ble.Characteristic) ([]*ble.Descriptor, error) {
+	log.Printf("BLE GATT: %s: %s: discovering descriptors", p, c.UUID)
 	p.Lock()
 	defer p.Unlock()
 	start := c.ValueHandle + 1
@@ -210,11 +249,13 @@ func (p *Client) DiscoverDescriptors(filter []ble.UUID, c *ble.Characteristic) (
 			b = b[length:]
 		}
 	}
+	log.Printf("BLE GATT: %s: %s: discovered %d descriptors in characteristic", p, c.UUID, len(c.Descriptors))
 	return c.Descriptors, nil
 }
 
 // ReadCharacteristic reads a characteristic value from a server. [Vol 3, Part G, 4.8.1]
 func (p *Client) ReadCharacteristic(c *ble.Characteristic) ([]byte, error) {
+	log.Printf("BLE GATT: %s: %s: read characteristic", p, c.UUID)
 	p.Lock()
 	defer p.Unlock()
 	val, err := p.ac.Read(c.ValueHandle)
@@ -223,11 +264,13 @@ func (p *Client) ReadCharacteristic(c *ble.Characteristic) ([]byte, error) {
 	}
 
 	c.Value = val
+	log.Printf("BLE GATT: %s: %s: read %d bytes from characteristic", p, c.UUID, len(val))
 	return val, nil
 }
 
 // ReadLongCharacteristic reads a characteristic value which is longer than the MTU. [Vol 3, Part G, 4.8.3]
 func (p *Client) ReadLongCharacteristic(c *ble.Characteristic) ([]byte, error) {
+	log.Printf("BLE GATT: %s: read long characteristic", c.UUID)
 	p.Lock()
 	defer p.Unlock()
 
@@ -248,21 +291,28 @@ func (p *Client) ReadLongCharacteristic(c *ble.Characteristic) ([]byte, error) {
 	}
 
 	c.Value = buffer
+	log.Printf("BLE GATT: %s: %s: read %d bytes from characteristic", p, c.UUID, len(buffer))
 	return buffer, nil
 }
 
 // WriteCharacteristic writes a characteristic value to a server. [Vol 3, Part G, 4.9.3]
 func (p *Client) WriteCharacteristic(c *ble.Characteristic, v []byte, noRsp bool) error {
+	log.Printf("BLE GATT: %s: write %d bytes to characteristic (noRsp: %v)", c.UUID, len(v), noRsp)
 	p.Lock()
 	defer p.Unlock()
 	if noRsp {
 		return p.ac.WriteCommand(c.ValueHandle, v)
 	}
-	return p.ac.Write(c.ValueHandle, v)
+	if err := p.ac.Write(c.ValueHandle, v); err != nil {
+		return fmt.Errorf("failed to write to characterstic handle: %w", err)
+	}
+	log.Printf("BLE GATT: %s: %s: wrote %d bytes to characteristic", p, c.UUID, len(v))
+	return nil
 }
 
 // ReadDescriptor reads a characteristic descriptor from a server. [Vol 3, Part G, 4.12.1]
 func (p *Client) ReadDescriptor(d *ble.Descriptor) ([]byte, error) {
+	log.Printf("BLE GATT: %s: read descriptor", d.UUID)
 	p.Lock()
 	defer p.Unlock()
 	val, err := p.ac.Read(d.Handle)
@@ -271,18 +321,25 @@ func (p *Client) ReadDescriptor(d *ble.Descriptor) ([]byte, error) {
 	}
 
 	d.Value = val
+	log.Printf("BLE GATT: %s: %s: read %d bytes from descriptor", p, d.UUID, len(val))
 	return val, nil
 }
 
 // WriteDescriptor writes a characteristic descriptor to a server. [Vol 3, Part G, 4.12.3]
 func (p *Client) WriteDescriptor(d *ble.Descriptor, v []byte) error {
+	log.Printf("BLE GATT: %s: write descriptor", d.UUID)
 	p.Lock()
 	defer p.Unlock()
-	return p.ac.Write(d.Handle, v)
+	if err := p.ac.Write(d.Handle, v); err != nil {
+		return fmt.Errorf("failed to write to descriptor handle: %w", err)
+	}
+	log.Printf("BLE GATT: %s: %s: wrote %d bytes to descriptor", p, d.UUID, len(v))
+	return nil
 }
 
 // ReadRSSI retrieves the current RSSI value of remote peripheral. [Vol 2, Part E, 7.5.4]
 func (p *Client) ReadRSSI() int {
+	log.Printf("BLE GATT: read RSSI", p)
 	p.Lock()
 	defer p.Unlock()
 	// TODO:
@@ -292,14 +349,21 @@ func (p *Client) ReadRSSI() int {
 // ExchangeMTU informs the server of the client’s maximum receive MTU size and
 // request the server to respond with its maximum receive MTU size. [Vol 3, Part F, 3.4.2.1]
 func (p *Client) ExchangeMTU(mtu int) (int, error) {
+	log.Printf("BLE GATT: %s: exchange mtu %d",p, mtu)
 	p.Lock()
 	defer p.Unlock()
-	return p.ac.ExchangeMTU(mtu)
+	out, err := p.ac.ExchangeMTU(mtu)
+	if err != nil {
+		return 0, err
+	}
+	log.Printf("BLE GATT: %s: exchanged mtu of %d", p, mtu)
+	return out, nil
 }
 
 // Subscribe subscribes to indication (if ind is set true), or notification of a
 // characteristic value. [Vol 3, Part G, 4.10 & 4.11]
 func (p *Client) Subscribe(c *ble.Characteristic, ind bool, h ble.NotificationHandler) error {
+	log.Printf("BLE GATT: %s: subscribing to characteristic",p, c.UUID)
 	p.Lock()
 	defer p.Unlock()
 
@@ -307,23 +371,34 @@ func (p *Client) Subscribe(c *ble.Characteristic, ind bool, h ble.NotificationHa
 		return fmt.Errorf("CCCD not found")
 	}
 	if ind {
-		return p.setHandlers(c.CCCD.Handle, c.ValueHandle, cccIndicate, h)
+		if err := p.setHandlers(c.CCCD.Handle, c.ValueHandle, cccIndicate, h); err != nil {
+			return err
+		}
+	} else if err := p.setHandlers(c.CCCD.Handle, c.ValueHandle, cccNotify, h); err != nil {
+		return err
 	}
-	return p.setHandlers(c.CCCD.Handle, c.ValueHandle, cccNotify, h)
+	log.Printf("BLE GATT: %s: %s: subscribed to characteristic", p, c.UUID)
+	return nil
 }
 
 // Unsubscribe unsubscribes to indication (if ind is set true), or notification
 // of a specified characteristic value. [Vol 3, Part G, 4.10 & 4.11]
 func (p *Client) Unsubscribe(c *ble.Characteristic, ind bool) error {
+	log.Printf("BLE GATT: %s: unsubscribing to characteristic",p, c.UUID)
 	p.Lock()
 	defer p.Unlock()
 	if c.CCCD == nil {
 		return fmt.Errorf("CCCD not found")
 	}
 	if ind {
-		return p.setHandlers(c.CCCD.Handle, c.ValueHandle, cccIndicate, nil)
+		if err := p.setHandlers(c.CCCD.Handle, c.ValueHandle, cccIndicate, nil); err != nil {
+			return err
+		}
+	} else if err := p.setHandlers(c.CCCD.Handle, c.ValueHandle, cccNotify, nil); err != nil {
+		return err
 	}
-	return p.setHandlers(c.CCCD.Handle, c.ValueHandle, cccNotify, nil)
+	log.Printf("BLE GATT: %s: %s: unsubscribed to characteristic", p, c.UUID)
+	return nil
 }
 
 func (p *Client) setHandlers(cccdh, vh, flag uint16, h ble.NotificationHandler) error {
@@ -355,6 +430,7 @@ func (p *Client) setHandlers(cccdh, vh, flag uint16, h ble.NotificationHandler) 
 
 // ClearSubscriptions clears all subscriptions to notifications and indications.
 func (p *Client) ClearSubscriptions() error {
+	log.Printf("BLE GATT: %s: clearing subscriptions", p)
 	p.Lock()
 	defer p.Unlock()
 	zero := make([]byte, 2)
@@ -364,15 +440,21 @@ func (p *Client) ClearSubscriptions() error {
 		}
 		delete(p.subs, vh)
 	}
+	log.Printf("BLE GATT: %s: cleared subscriptions", p)
 	return nil
 }
 
 // CancelConnection disconnects the connection.
 func (p *Client) CancelConnection(ctx context.Context) error {
+	log.Printf("BLE GATT: %s: canceling connection", p)
 	defer p.Wait()
 	p.Lock()
 	defer p.Unlock()
-	return p.conn.Close(ctx)
+	if err := p.conn.Close(ctx); err != nil {
+		return err
+	}
+	log.Printf("BLE GATT: %s: cancel connection", p)
+	return nil
 }
 
 // Disconnected returns a receiving channel, which is closed when the client disconnects.
@@ -389,22 +471,35 @@ func (p *Client) Conn() ble.Conn {
 
 // HandleNotification ...
 func (p *Client) HandleNotification(req []byte) {
+	log.Printf("BLE GATT: %s: handling notification", p)
+	defer log.Printf("BLE GATT: %s: handled notification", p)
+	fn, ok := p.getNotificationHandler(req)
+	if !ok {
+		// FIXME: disconnects and propagate an error to the user.
+		log.Printf("BLE GATT: %s: received an unregistered notification", p)
+		return
+	}
+	if fn == nil {
+		return
+	}
+	out := make([]byte,len(req)-3)
+	copy(out, req[3:])
+	fn(out)
+}
+
+func (p *Client) getNotificationHandler(req []byte) (ble.NotificationHandler, bool){
 	p.Lock()
 	defer p.Unlock()
 	vh := att.HandleValueIndication(req).AttributeHandle()
 	sub, ok := p.subs[vh]
 	if !ok {
-		// FIXME: disconnects and propagate an error to the user.
-		log.Printf("Got an unregistered notification")
-		return
+		return nil, false
 	}
 	fn := sub.nHandler
 	if req[0] == att.HandleValueIndicationCode {
 		fn = sub.iHandler
 	}
-	if fn != nil {
-		fn(req[3:])
-	}
+	return fn, true
 }
 
 type sub struct {

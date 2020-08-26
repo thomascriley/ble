@@ -1,14 +1,13 @@
 package linux
 
 import (
-	"fmt"
 	"context"
+	"errors"
+	"fmt"
+	"github.com/thomascriley/ble/log"
 	"io"
-	"log"
-	"strings"
 	"sync"
 	"time"
-	"errors"
 
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/att"
@@ -19,28 +18,45 @@ import (
 // Device ...
 type Device struct {
 	sync.WaitGroup
-	HCI           *hci.HCI
-	Server        *gatt.Server
-	scanCtx       context.Context
-	scanCancel    context.CancelFunc
-	inquireCtx    context.Context
-	inquireCancel context.CancelFunc
-	numResponses  int
-	allowDup      bool
-	error         error
+	HCI          *hci.HCI
+	Server       *gatt.Server
+	numResponses int
+	allowDup     bool
+	interval     time.Duration
+
+	scanMutex    sync.Mutex
+	scanErr      chan error
+	scanning     bool
+	scanTempStopped chan bool
+	scanRequested bool
+
+	inquireMutex    sync.Mutex
+	inquireErr      chan error
+	inquiring       bool
+	inquireTempStopped chan bool
+	inquireRequested bool
 }
 
 // NewDevice returns the default HCI device.
 func NewDevice() *Device {
-	return &Device{HCI: hci.NewHCI()}
+	d := &Device{
+		HCI:        hci.NewHCI(),
+		scanErr:    make(chan error, 1),
+		inquireErr: make(chan error, 1),
+		scanTempStopped: make(chan bool),
+		inquireTempStopped: make(chan bool),
+	}
+	close(d.scanTempStopped)
+	close(d.inquireTempStopped)
+	return d
 }
 
 func (d *Device) Initialize(ctx context.Context) error {
 	err := d.HCI.Init(ctx)
 	switch {
-	case errors.Is(err,ble.ErrAlreadyInitialized):
+	case errors.Is(err, ble.ErrAlreadyInitialized):
 		return err
-	case err == nil :
+	case err == nil:
 		return nil
 	default:
 		_ = d.HCI.Close()
@@ -99,7 +115,7 @@ func (d *Device) Serve(name string, handler ble.NotifyHandler) (err error) {
 		as, err := att.NewServer(d.Server.DB(), l2c)
 		d.Server.Unlock()
 		if err != nil {
-			fmt.Printf("can't create ATT server: %s", err)
+			log.Printf("can't create ATT server: %s", err)
 			continue
 		}
 
@@ -207,22 +223,37 @@ func (d *Device) AdvertiseIBeacon(ctx context.Context, u ble.UUID, major, minor 
 	return d.HCI.StopAdvertising(ctx)
 }
 
+// RequestRemoteName ...
+func (d *Device) RequestRemoteName(ctx context.Context, a ble.Addr) (string, error) {
+	return d.HCI.RequestRemoteName(ctx, a)
+}
+
 // Scan starts scanning. Duplicated advertisements will be filtered out if allowDup is set to false.
 func (d *Device) Scan(ctx context.Context, allowDup bool, h ble.AdvHandler) error {
+	select {
+	case <-d.scanTempStopped:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	d.scanRequested = true
+	defer func(){ d.scanRequested = false }()
+
 	if err := d.HCI.SetAdvHandler(h); err != nil {
 		return fmt.Errorf("unable to set advertisement handler: %s", err)
 	}
-	if err := d.HCI.Scan(ctx, allowDup); err != nil {
-		return fmt.Errorf("unable to start scan: %w", err)
+	if err := d.startScan(ctx, allowDup); err != nil {
+		return err
 	}
-	d.allowDup = allowDup
 
 	// scan until the context or socket close
-	d.scanCtx, d.scanCancel = context.WithCancel(ctx)
-	defer d.scanCancel()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	select {
-	case <-d.scanCtx.Done():
-		return d.HCI.StopScanning(context.Background())
+	case err := <-d.scanErr:
+		return err
+	case <-ctx.Done():
+		return d.stopScan()
 	case <-d.HCI.Closed():
 		return errors.New("hci device closed")
 	}
@@ -230,6 +261,15 @@ func (d *Device) Scan(ctx context.Context, allowDup bool, h ble.AdvHandler) erro
 
 // Inquire starts inquiring for bluetooth devices broadcasting using br/edr
 func (d *Device) Inquire(ctx context.Context, interval time.Duration, numResponses int, h ble.InqHandler) error {
+	select {
+	case <-d.inquireTempStopped:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	d.inquireRequested = true
+	defer func(){ d.inquireRequested = false }()
+
 	d.numResponses = numResponses
 
 	if err := d.HCI.SetInqHandler(h); err != nil {
@@ -239,135 +279,254 @@ func (d *Device) Inquire(ctx context.Context, interval time.Duration, numRespons
 	// inquiries do not run indefinitely but for specific intervals of time. To mimic indefinite scanning: periodically
 	// restart the scan with the timeout ends
 	for {
-		d.inquireCtx, d.inquireCancel = context.WithTimeout(ctx,interval)
-		defer d.inquireCancel()
-
-		if err := d.HCI.Inquire(ctx, int(float64(interval) / 1.28), 255); err != nil {
-			return fmt.Errorf("unable to start inquiry: %w", err)
+		if err := d.inquire(ctx, interval); err != nil {
+			return err
 		}
-
-		// inquire until the context closes or the socket closes
+		// check if it's time to exit, otherwise restart the inquiry
 		select {
-		case <-d.inquireCtx.Done():
-			// stop the current inquiry
-			if err := d.HCI.StopInquiry(context.Background()); err != nil {
-				return fmt.Errorf("unable to stop inquiry: %w", err)
-			}
-			// check if it's time to exit, otherwise restart the inquiry
-			select {
-			case <-ctx.Done():
-				return nil
-			default:
-				continue
-			}
-		case <-d.HCI.Closed():
-			return errors.New("hci device closed")
-		}
-	}
-}
-
-// RequestRemoteName ...
-func (d *Device) RequestRemoteName(ctx context.Context, a ble.Addr) (string, error) {
-	return d.HCI.RequestRemoteName(ctx, a)
-}
-
-// tempStop temporarily stops scanning or inquiring (this is done when connecting)
-func (d *Device) tempStop() error {
-	if d.scanCtx != nil {
-		select {
-		case <-d.scanCtx.Done():
+		case <-ctx.Done():
+			return nil
 		default:
-			if err := d.HCI.StopScanning(context.Background()); err != nil {
-				return err
-			}
+			continue
 		}
 	}
-	if d.inquireCtx != nil {
-		select {
-		case <-d.inquireCtx.Done():
-		default:
-			if err := d.HCI.StopInquiry(context.Background()); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-// tempStop restarts a temporary stoppage
-func (d *Device) tempStart() error {
-	errored := make([]string, 0)
-	if d.scanCtx != nil {
-		select {
-		case <-d.scanCtx.Done():
-		default:
-			// restart scan, if unable to cancel the context to stop the original request
-			if err := d.HCI.Scan(d.scanCtx, d.allowDup); err != nil {
-				errored = append(errored, fmt.Sprintf("could not restart scan: %s", err.Error()))
-			}
-		}
-	}
-	if d.inquireCtx != nil {
-		select {
-		case <-d.inquireCtx.Done():
-		default:
-			deadline, _ := d.inquireCtx.Deadline()
-			length := int(deadline.Sub(time.Now()).Seconds() / 1.28)
-			if err := d.HCI.Inquire(d.inquireCtx, length, d.numResponses); err != nil {
-				errored = append(errored, fmt.Sprintf("could not restart inquiry: %s", err.Error()))
-			}
-		}
-	}
-	if len(errored) > 0 {
-		if d.scanCancel != nil {
-			d.scanCancel()
-		}
-		if d.inquireCancel != nil {
-			d.inquireCancel()
-		}
-		return fmt.Errorf("%w: %s", ble.ErrRestartScan, strings.Join(errored, ","))
-	}
-	return nil
 }
 
 // Dial ...
-func (d *Device) DialBLE(ctx context.Context, address ble.Addr, addressType ble.AddressType) (ble.ClientBLE, error) {
+func (d *Device) DialBLE(ctx context.Context, address ble.Addr, addressType ble.AddressType) (cli ble.ClientBLE, err error) {
 	// d.HCI.Dial is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
 	// stopping the scan will improve ability to connect
 	select {
 	case <-d.HCI.Closed():
 		return nil, errors.New("hci device is down")
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	default:
 	}
-	if err := d.tempStop(); err != nil {
-		return nil, fmt.Errorf("unable to temporary stop scan: %w", err)
+	if err = d.tempStop(); err != nil {
+		return nil, fmt.Errorf("failed to temporary stop scan: %w", err)
 	}
-	cln, err := d.HCI.Dial(ctx, address, addressType)
-	if err := d.tempStart(); err != nil {
-		return cln, err
-	}
-	return cln, fmt.Errorf("can't dial ble: %w", err)
+	cli, err = d.HCI.Dial(ctx, address, addressType)
+	d.tempStart()
+	return cli, err
 }
 
 // DialRFCOMM ...
 // TODO: implement SDP to determine RFCOMM channel number
-func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8, channel uint8) (ble.ClientRFCOMM, error) {
+func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode uint8, channel uint8) (cli ble.ClientRFCOMM, err error) {
 	// d.HCI.DialRFCOMM is a blocking call, although most of time it should return immediately.
 	// But in case passing wrong device address or the device went non-connectable, it blocks.
 	select {
 	case <-d.HCI.Closed():
 		return nil, errors.New("hci device is down")
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	default:
 	}
-	if err := d.tempStop(); err != nil {
+	if err = d.tempStop(); err != nil {
 		return nil, fmt.Errorf("unable to temporary stop scan: %w", err)
 	}
-	cln, err := d.HCI.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode, channel)
-	if err := d.tempStart(); err != nil {
-		return cln, err
-	}
-	return cln, fmt.Errorf( "can't dial rfcomm: %w", err)
+	cli, err = d.HCI.DialRFCOMM(ctx, a, clockOffset, pageScanRepetitionMode, channel)
+	d.tempStart()
+	return cli, err
 }
 
+func (d *Device) inquire(ctx context.Context, interval time.Duration) error {
+	ctx, cancel := context.WithTimeout(ctx, interval)
+	defer cancel()
 
+	if err := d.startInquiry(ctx, interval); err != nil {
+		return err
+	}
+
+	// inquire until the context closes or the socket closes
+	select {
+	case err := <-d.inquireErr:
+		return err
+	case <-ctx.Done():
+		return d.stopInquiry()
+	case <-d.HCI.Closed():
+		return errors.New("hci device closed")
+	}
+}
+
+// tempStop temporarily stops scanning or inquiring (this is done when connecting)
+func (d *Device) tempStop() error {
+	select {
+	case <-d.scanTempStopped:
+		d.scanTempStopped = make(chan bool)
+	default:
+	}
+	select {
+	case <-d.inquireTempStopped:
+		d.inquireTempStopped = make(chan bool)
+	default:
+	}
+	if err := d.tempStopScan(); err != nil {
+		return err
+	}
+	if err := d.tempStopInquiry(); err != nil {
+		d.trigger(d.tempStartScan)
+		return err
+	}
+	return nil
+}
+
+func (d *Device) tempStart() {
+	select {
+	case <-d.scanTempStopped:
+	default:
+		close(d.scanTempStopped)
+	}
+	select {
+	case <-d.inquireTempStopped:
+	default:
+		close(d.inquireTempStopped)
+	}
+	d.trigger(d.tempStartScan, d.tempStartInquiry)
+}
+
+func (d *Device) tempStopScan() error {
+	if !d.scanRequested {
+		return nil
+	}
+	log.Print("BLE: temporarily stopping scan")
+	if err := d.stopScan(); err != nil {
+		return err
+	}
+	log.Print("BLE: temporarily stopped scan")
+	return nil
+}
+
+func (d *Device) tempStopInquiry() error {
+	if !d.inquireRequested {
+		return nil
+	}
+	log.Print("BLE: temporarily stopping inquiry")
+	if err := d.stopInquiry(); err != nil {
+		return err
+	}
+	log.Print("BLE: temporarily stopped inquiry")
+	return nil
+}
+
+func (d *Device) tempStartScan(ctx context.Context) {
+	if !d.scanRequested {
+		return
+	}
+	log.Print("BLE: temporarily starting scan")
+	if err := d.startScan(ctx, d.allowDup); err != nil {
+		select {
+		case d.scanErr <- err:
+		default:
+		}
+		log.Printf("BLE: failed to temporarily start inquiry: %w", err)
+		return
+	}
+	log.Print("BLE: temporarily started scan")
+}
+
+func (d *Device) tempStartInquiry(ctx context.Context) {
+	if !d.inquireRequested {
+		return
+	}
+	log.Print("BLE: temporarily starting inquiry")
+	if err := d.startInquiry(ctx, d.interval); err != nil {
+		select {
+		case d.scanErr <- err:
+		default:
+		}
+		log.Printf("BLE: failed to temporarily start inquiry: %w", err)
+		return
+	}
+	log.Print("BLE: temporarily started inquiry")
+}
+
+func (d *Device) trigger(fns ...func(ctx context.Context)) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// cancel context if device closes
+	d.Add(1)
+	go func(ctx context.Context, cancel context.CancelFunc) {
+		defer d.Done()
+		select {
+		case <-ctx.Done():
+		case <-d.Closed():
+			cancel()
+		}
+	}(ctx, cancel)
+
+	// trigger with context
+	d.Add(1)
+	go func(ctx context.Context) {
+		defer d.Done()
+		defer cancel()
+		for _, fn := range fns {
+			fn(ctx)
+		}
+	}(ctx)
+}
+
+func (d *Device) startScan(ctx context.Context, allowDup bool) error {
+	d.scanMutex.Lock()
+	defer d.scanMutex.Unlock()
+
+	if d.scanning {
+		return nil
+	}
+	if err := d.HCI.Scan(ctx, allowDup); err != nil {
+		return fmt.Errorf("ble failed to start scan: %w", err)
+	}
+	d.allowDup = allowDup
+	d.scanning = true
+	return nil
+}
+
+func (d *Device) stopScan() error {
+	d.scanMutex.Lock()
+	defer d.scanMutex.Unlock()
+
+	if !d.scanning {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := d.HCI.StopScanning(ctx); err != nil {
+		return fmt.Errorf("ble failed to stop scanning: %w", err)
+	}
+	d.scanning = false
+	return nil
+}
+
+func (d *Device) startInquiry(ctx context.Context, interval time.Duration) error {
+	d.inquireMutex.Lock()
+	defer d.inquireMutex.Unlock()
+
+	if d.inquiring {
+		return nil
+	}
+	if err := d.HCI.Inquire(ctx, int(float64(interval)/1.28), 255); err != nil {
+		return fmt.Errorf("unable to start inquiry: %w", err)
+	}
+	d.interval = interval
+	d.inquiring = true
+	return nil
+}
+
+func (d *Device) stopInquiry() error {
+	d.inquireMutex.Lock()
+	defer d.inquireMutex.Unlock()
+
+	if !d.inquiring {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := d.HCI.StopInquiry(ctx); err != nil {
+		return fmt.Errorf("ble failed to stop inquiry: %w", err)
+	}
+	d.inquiring = false
+	return nil
+}

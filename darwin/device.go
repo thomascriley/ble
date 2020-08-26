@@ -11,6 +11,7 @@ import (
 	"errors"
 	"github.com/raff/goble/xpc"
 	"github.com/thomascriley/ble"
+	"github.com/thomascriley/ble/log"
 )
 
 // Device is either a Peripheral or Central device.
@@ -37,7 +38,7 @@ type Device struct {
 }
 
 // NewDeviceWithNameAndHandler returns a BLE device.
-func NewDeviceWithNameAndHandler(name string, handler ble.NotifyHandler, opts ...ble.Option) (*Device, error) {
+func NewDeviceWithNameAndHandler(name string, handler ble.NotifyHandler) (*Device, error) {
 	err := initXpcIDs()
 	if err != nil {
 		return nil, err
@@ -51,7 +52,7 @@ func NewDeviceWithNameAndHandler(name string, handler ble.NotifyHandler, opts ..
 		base:   1,
 		closed: make(chan struct{}, 1),
 	}
-	if err := d.Option(opts...); err != nil {
+	if err := d.Option(); err != nil {
 		return nil, err
 	}
 
@@ -65,11 +66,8 @@ func NewDeviceWithNameAndHandler(name string, handler ble.NotifyHandler, opts ..
 }
 
 // Option sets the options specified.
-func (d *Device) Option(opts ...ble.Option) error {
+func (d *Device) Option() error {
 	var err error
-	for _, opt := range opts {
-		err = opt(d)
-	}
 	return err
 }
 
@@ -400,7 +398,7 @@ func (d *Device) Dial(ctx context.Context, a ble.Addr) (ble.Client, error) {
 }
 
 // DialRFCOMM ...
-func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (ble.RFCOMMClient, error) {
+func (d *Device) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pageScanRepetitionMode, channel uint8) (ble.ClientRFCOMM, error) {
 	return nil, errors.New("Not implemented")
 }
 
@@ -417,7 +415,7 @@ func (d *Device) Stop() error {
 // HandleXpcEvent process Device events and asynchronous errors.
 func (d *Device) HandleXpcEvent(event xpc.Dict, err error) {
 	if err != nil {
-		fmt.Printf("error: %s\n", err)
+		log.Printf("error: %s\n", err)
 		return
 	}
 	m := msg(event)
@@ -477,7 +475,7 @@ func (d *Device) HandleXpcEvent(event xpc.Dict, err error) {
 			"kCBMsgArgResult":        0,
 		})
 		if err != nil {
-			fmt.Printf("error: %s\n", err)
+			log.Printf("error: %s\n", err)
 			return
 		}
 	case evtWriteRequest:
@@ -497,7 +495,7 @@ func (d *Device) HandleXpcEvent(event xpc.Dict, err error) {
 				"kCBMsgArgResult":        0,
 			})
 			if err != nil {
-				fmt.Printf("error: %s\n", err)
+				log.Printf("error: %s\n", err)
 				return
 			}
 		}
@@ -537,7 +535,7 @@ func (d *Device) HandleXpcEvent(event xpc.Dict, err error) {
 
 		sub := c.subs[uint16(args.characteristicHandle())]
 		if sub == nil {
-			fmt.Println("notified by unsubscribed handle")
+			log.Println("notified by unsubscribed handle")
 			// FIXME: should terminate the connection?
 		} else {
 			sub.fn(args.data())
@@ -558,7 +556,7 @@ func (d *Device) HandleXpcEvent(event xpc.Dict, err error) {
 		d.conn(args).rspc <- m
 
 	default:
-		fmt.Printf("Unhandled event: %#v\n", event)
+		log.Printf("Unhandled event: %#v\n", event)
 	}
 }
 

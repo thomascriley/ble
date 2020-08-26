@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/thomascriley/ble/log"
 	"io"
 	"net"
 	"sync"
@@ -160,7 +161,7 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 			if err := c.recombine(); err != nil {
 				if err != io.EOF {
 					// TODO: wrap and pass the error up.
-					fmt.Printf("recombine failed: %s\n", err)
+					log.Printf("recombine failed: %s\n", err)
 				}
 				close(c.chInPDU)
 				return
@@ -397,7 +398,7 @@ func (c *Conn) recombine() error {
 	case cid >= cidDynamicStart:
 		return c.receivePDU(p)
 	default:
-		fmt.Printf("recombine: unrecognized CID: %04X, [%X]\n", cid, p)
+		log.Printf("recombine: unrecognized CID: %04X, [%X]\n", cid, p)
 	}
 	return nil
 }

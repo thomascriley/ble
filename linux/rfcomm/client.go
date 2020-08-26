@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/thomascriley/ble/log"
 	"io"
 	"sync"
 	"time"
@@ -120,7 +121,7 @@ func (c *Client) connect(ctx context.Context) error {
 
 	// send parameter negotiation [optional]
 	if err := c.sendParameterNegotiation(Priority, MaxFrameSize); err != nil {
-		fmt.Printf("Error negotiating the rfcomm parameters: %s\n", err)
+		log.Printf("Error negotiating the rfcomm parameters: %s\n", err)
 	}
 
 	// send SABM on (DLCI X)
@@ -220,7 +221,7 @@ func (c *Client) Write(v []byte) (int, error) {
 		if c.credits == 0 {
 			c.waitCredits = make(chan struct{})
 		}
-		fmt.Printf("Credits: %d", c.credits)
+		log.Printf("Credits: %d", c.credits)
 	}
 
 	return len(v), c.sendFrame( &frame{

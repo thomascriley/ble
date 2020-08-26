@@ -1,5 +1,7 @@
 package ble
 
+import "github.com/thomascriley/ble/log"
+
 // NewService creates and initialize a new Service using u as it's UUID.
 func NewService(u UUID) *Service {
 	return &Service{UUID: u}
@@ -137,10 +139,12 @@ type Characteristic struct {
 // AddDescriptor panics if the characteristic already contains another descriptor with the same UUID.
 func (c *Characteristic) AddDescriptor(d *Descriptor) *Descriptor {
 	for _, x := range c.Descriptors {
+		log.Printf("%s: Existing Descriptor: %s", c.UUID, d.UUID)
 		if x.UUID.Equal(d.UUID) {
-			panic("service already contains a characteristic with UUID " + d.UUID.String())
+			panic("characteristic already contains a descriptor with UUID " + d.UUID.String())
 		}
 	}
+	log.Printf("%s: Adding Descriptor: %s", c.UUID, d.UUID)
 	c.Descriptors = append(c.Descriptors, d)
 	return d
 }

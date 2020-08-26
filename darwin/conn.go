@@ -1,8 +1,8 @@
 package darwin
 
 import (
-	"fmt"
 	"context"
+	"github.com/thomascriley/ble/log"
 	"sync"
 
 	"github.com/raff/goble/xpc"
@@ -94,7 +94,7 @@ func (c *conn) Write(b []byte) (int, error) {
 	return 0, nil
 }
 
-func (c *conn) Close() error {
+func (c *conn) Close(ctx context.Context) error {
 	return nil
 }
 
@@ -127,7 +127,7 @@ func (c *conn) subscribed(char *ble.Characteristic) {
 func (c *conn) unsubscribed(char *ble.Characteristic) {
 	if n, found := c.notifiers[char.Handle]; found {
 		if err := n.Close(); err != nil {
-			fmt.Printf("failed to clone notifier: %s\n", err)
+			log.Printf("failed to clone notifier: %s\n", err)
 		}
 		delete(c.notifiers, char.Handle)
 	}

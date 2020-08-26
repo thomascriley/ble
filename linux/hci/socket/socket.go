@@ -164,12 +164,9 @@ func (s *Socket) Close() error {
 	default:
 	}
 
-	s.rmu.Lock()
-	defer s.rmu.Unlock()
 	defer close(s.closed)
 	s.Write([]byte{0x01, 0x09, 0x10, 0x00})
-	err := unix.Close(s.fd)
-	if err != nil {
+	if err := unix.Close(s.fd);err != nil {
 		return fmt.Errorf("can't close hci socket: %w", err)
 	}
 	return nil

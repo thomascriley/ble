@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/thomascriley/ble/log"
 	"time"
 
 	"github.com/thomascriley/ble/linux/hci/cmd"
@@ -419,7 +420,7 @@ func (c *Conn) handleConfigurationResponse(s sigCmd) error {
 	select {
 	case c.sigSent <- s:
 	default:
-		fmt.Printf("Configuration Response error: signal channel buffer full\n")
+		log.Printf("Configuration Response error: signal channel buffer full\n")
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package hci
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -28,6 +29,7 @@ func (h *HCI) Scan(ctx context.Context, allowDup bool) error {
 	}
 	h.params.scanEnable.LEScanEnable = 1
 	h.adHist = make(map[string]*Advertisement, 128)
+	h.adTimes = make(map[string]time.Time, 128)
 	return h.Send(ctx, &h.params.scanEnable, nil)
 }
 
@@ -203,16 +205,26 @@ func (h *HCI) Dial(ctx context.Context, a ble.Addr, addressType ble.AddressType)
 	h.params.Unlock()
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("send failed: %w", err)
 	}
-
-	cancelCTX, cancel := context.WithTimeout(context.Background(), 1 * time.Second)
-	defer cancel()
 
 	select {
 	case <-ctx.Done():
-		return h.cancelDial(cancelCTX)
+		cancelCTX, cancel := context.WithTimeout(context.Background(), 3 * time.Second)
+		defer cancel()
+		cli, err := h.cancelDial(cancelCTX)
+		switch {
+		case cli != nil:
+			return cli, nil
+		case err != nil:
+			return nil, fmt.Errorf("unable to cancel connection after %w: %s", ctx.Err(), err)
+		default:
+			return nil, fmt.Errorf("connection canceled after %w", ctx.Err())
+		}
 	case <-h.Closed():
+		if h.err == nil {
+			return nil, errors.New("hardware device closed")
+		}
 		return nil, h.err
 	case c := <-h.chMasterConn:
 		c.SourceID = cidLEAtt
@@ -224,24 +236,27 @@ func (h *HCI) Dial(ctx context.Context, a ble.Addr, addressType ble.AddressType)
 // cancelDial cancels the Dialing
 func (h *HCI) cancelDial(ctx context.Context) (ble.ClientBLE, error) {
 	err := h.Send(ctx, &h.params.connCancel, nil)
-	if err == nil {
+	switch {
+	case err == nil:
 		// The pending connection was canceled successfully.
-		return nil, fmt.Errorf("connection canceled")
-	}
-	// The connection has been established, the cancel command
-	// failed with ErrDisallowed.
-	if err == ErrDisallowed {
+		return nil, nil
+	case errors.Is(err, ErrDisallowed):
+		// The connection has been established, the cancel command
+		// failed with ErrDisallowed.
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-h.Closed():
+			if h.err == nil {
+				return nil, errors.New("hardware device closed")
+			}
 			return nil, h.err
 		case ch := <- h.chMasterConn:
 			return gatt.NewClient(ch)
 		}
-
+	default:
+		return nil, fmt.Errorf( "cancel connection failed: %w", err)
 	}
-	return nil, fmt.Errorf( "cancel connection failed: %w", err)
 }
 
 // Advertise starts advertising.

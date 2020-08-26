@@ -3,6 +3,7 @@ package hci
 import (
 	"context"
 	"fmt"
+	"github.com/thomascriley/ble/log"
 	"net"
 	"time"
 	"errors"
@@ -135,20 +136,20 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		timeout := 15 * time.Second
 
 		if err = c.InformationRequest(ctx, l2cap.InfoTypeConnectionlessMTU, timeout); err != nil {
-			fmt.Printf("Warning: unable to make information request for connectionless mtu: %s\n", err)
+			log.Printf("Warning: unable to make information request for connectionless mtu: %s\n", err)
 			//c.Close()
 			//return nil, err
 		}
 
 		if err = c.InformationRequest(ctx, l2cap.InfoTypeExtendedFeatures, timeout); err != nil {
-			fmt.Printf("Warning: unable to make information request for extended features: %s\n", err)
+			log.Printf("Warning: unable to make information request for extended features: %s\n", err)
 			//c.Close()
 			//return nil, err
 		}
 
 		// 1.2 - 2.1 + EDR will return not supported
 		if err = c.InformationRequest(ctx, l2cap.InfoTypeFixedChannels, timeout); err != nil {
-			fmt.Printf("Warning: unable to make information request for fixed channels: %s\n", err)
+			log.Printf("Warning: unable to make information request for fixed channels: %s\n", err)
 		}
 
 		if err = c.ConnectionRequest(ctx, psmRFCOMM, timeout); err != nil {

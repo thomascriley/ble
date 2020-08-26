@@ -2,7 +2,7 @@ package att
 
 import (
 	"encoding/binary"
-	"fmt"
+	"log"
 
 	"github.com/thomascriley/ble"
 )
@@ -144,13 +144,13 @@ func genDescAttr(d *ble.Descriptor, h uint16) *attr {
 
 // DumpAttributes ...
 func DumpAttributes(aa []*attr) {
-	fmt.Println("server: db: Generating attribute table")
+	log.Println("server: db: Generating attribute table")
 	for _, a := range aa {
 		if a.v != nil {
-			fmt.Printf("server: db: 0x%04X 0x%04X 0x%s [% X]\n", a.h, a.endh, a.typ, a.v)
+			log.Printf("server: db: 0x%04X 0x%04X 0x%s [% X]\n", a.h, a.endh, a.typ, a.v)
 			continue
 		}
-		fmt.Printf("server: db: 0x%04X 0x%04X 0x%s\n", a.h, a.endh, a.typ)
+		log.Printf("server: db: 0x%04X 0x%04X 0x%s\n", a.h, a.endh, a.typ)
 	}
 }
 

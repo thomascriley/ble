@@ -68,6 +68,10 @@ func (a *adv) RSSI() int {
 	return a.args.GetInt("kCBMsgArgRssi", 0)
 }
 
-func (a *adv) Addr() ble.Addr {
+func (a *adv) Address() ble.Addr {
 	return a.args.MustGetUUID("kCBMsgArgDeviceUUID")
+}
+
+func (a *adv) AddressType() ble.AddressType {
+	return ble.AddressTypePublic
 }
