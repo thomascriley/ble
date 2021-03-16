@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -65,6 +66,19 @@ func (u UUID) String() string {
 // Equal returns a boolean reporting whether v represent the same UUID as u.
 func (u UUID) Equal(v UUID) bool {
 	return bytes.Equal(u, v)
+}
+
+func (u *UUID) MarshalJSON() ([]byte, error){
+	return json.Marshal([]byte(*u))
+}
+
+func (u *UUID) UnmarshalJSON(bs []byte) error {
+	in := make([]byte,0)
+	if err := json.Unmarshal(bs, &in); err != nil {
+		return err
+	}
+	*u = UUID(in)
+	return nil
 }
 
 // Contains returns a boolean reporting whether u is in the slice s.

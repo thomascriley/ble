@@ -24,6 +24,6 @@ type Advertisement interface {
 
 // ServiceData ...
 type ServiceData struct {
-	UUID UUID
-	Data []byte
+	UUID UUID `json:"uuid"`
+	Data []byte `json:"data"`
 }

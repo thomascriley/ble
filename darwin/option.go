@@ -2,21 +2,29 @@ package darwin
 
 import (
 	"errors"
-	"github.com/thomascriley/ble/linux/hci/evt"
 	"time"
 
 	"github.com/thomascriley/ble/linux/hci/cmd"
+	"github.com/thomascriley/ble/linux/hci/evt"
 )
+
+// SetConnectedHandler sets handler to be called when new connection is established.
+func (d *Device) SetConnectedHandler(f func(evt.LEConnectionComplete)) error {
+	return errors.New("Not supported")
+}
+
+// SetDisconnectedHandler sets handler to be called on disconnect.
+func (d *Device) SetDisconnectedHandler(f func(evt.DisconnectionComplete)) error {
+	return errors.New("Not supported")
+}
 
 // SetPeripheralRole configures the device to perform Peripheral tasks.
 func (d *Device) SetPeripheralRole() error {
-	d.role = 1
 	return nil
 }
 
 // SetCentralRole configures the device to perform Central tasks.
 func (d *Device) SetCentralRole() error {
-	d.role = 0
 	return nil
 }
 
@@ -47,15 +55,5 @@ func (d *Device) SetScanParams(param cmd.LESetScanParameters) error {
 
 // SetAdvParams overrides default advertising parameters.
 func (d *Device) SetAdvParams(param cmd.LESetAdvertisingParameters) error {
-	return errors.New("Not supported")
-}
-
-// SetConnectedHandler sets handler to be called when new connection is established.
-func (h *Device) SetConnectedHandler(f func(complete evt.LEConnectionComplete)) error {
-	return errors.New("Not supported")
-}
-
-// SetDisconnectedHandler sets handler to be called on disconnect.
-func (h *Device) SetDisconnectedHandler(f func(evt.DisconnectionComplete)) error {
 	return errors.New("Not supported")
 }

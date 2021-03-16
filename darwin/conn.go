@@ -2,30 +2,77 @@ package darwin
 
 import (
 	"context"
-	"github.com/thomascriley/ble/log"
+	"fmt"
+	"log"
 	"sync"
 
-	"github.com/raff/goble/xpc"
 	"github.com/thomascriley/ble"
+	"github.com/JuulLabs-OSS/cbgo"
 )
 
-func newConn(d *Device, a ble.Addr, rxMTU int) *conn {
-	return &conn{
+// newGenConn creates a new generic (role-less) connection.  This should not be
+// called directly; use newCentralConn or newPeripheralConn instead.
+func newGenConn(d *Device, a ble.Addr) (*conn, error) {
+	c := &conn{
 		dev:   d,
-		rxMTU: rxMTU,
+		rxMTU: 23,
 		txMTU: 23,
 		addr:  a,
 		done:  make(chan struct{}),
+		group: sync.WaitGroup{},
+		notifiers: make(map[cbgo.Characteristic]ble.Notifier),
 
-		notifiers: make(map[uint16]ble.Notifier),
-		subs:      make(map[uint16]*sub),
-
-		rspc: make(chan msg),
+		subs:     make(map[string]*sub),
+		chrReads: make(map[string]chan error),
 	}
+
+	if err := d.addConn(c); err != nil {
+		return nil, err
+	}
+
+	c.group.Add(1)
+	go func() {
+		defer c.group.Done()
+		<-c.done
+		d.delConn(c.addr)
+	}()
+
+	return c, nil
+}
+
+// newCentralConn creates a new connection with us acting as central
+// (peer=peripheral).
+func newCentralConn(d *Device, prph cbgo.Peripheral) (*conn, error) {
+	c, err := newGenConn(d, ble.NewAddr(prph.Identifier().String()))
+	if err != nil {
+		return nil, err
+	}
+
+	// -3 to account for WriteCommand base.
+	c.txMTU = prph.MaximumWriteValueLength(false) - 3
+	c.prph = prph
+
+	return c, nil
+}
+
+// newCentralConn creates a new connection with us acting as peripheral
+// (peer=central).
+func newPeripheralConn(d *Device, cent cbgo.Central) (*conn, error) {
+	c, err := newGenConn(d, ble.NewAddr(cent.Identifier().String()))
+	if err != nil {
+		return nil, err
+	}
+
+	// -3 to account for ATT_HANDLE_VALUE_NTF base.
+	c.txMTU = cent.MaximumUpdateValueLength() - 3
+	c.cent = cent
+
+	return c, nil
 }
 
 type conn struct {
 	sync.RWMutex
+	group sync.WaitGroup
 
 	dev   *Device
 	ctx   context.Context
@@ -34,17 +81,16 @@ type conn struct {
 	addr  ble.Addr
 	done  chan struct{}
 
-	rspc chan msg
+	evl clientEventListener
 
-	connInterval       int
-	connLatency        int
-	supervisionTimeout int
+	prph cbgo.Peripheral
+	cent cbgo.Central
 
-	notifiers map[uint16]ble.Notifier // central connection only
+	notifiersMutex sync.Mutex
+	notifiers map[cbgo.Characteristic]ble.Notifier // central connection only
 
-	subs map[uint16]*sub
-
-	isConnected bool
+	subs     map[string]*sub
+	chrReads map[string]chan error
 }
 
 func (c *conn) Context() context.Context {
@@ -82,19 +128,18 @@ func (c *conn) SetTxMTU(mtu int) {
 	c.Unlock()
 }
 
-func (c *conn) ReadSDU(b []byte) (bool, int, error) {
-	return false, 0, nil
-}
-
-func (c *conn) Read(b []byte) (n int, err error) {
+func (c *conn) Read(b []byte) (int, error) {
 	return 0, nil
 }
-
 func (c *conn) Write(b []byte) (int, error) {
 	return 0, nil
 }
 
-func (c *conn) Close(ctx context.Context) error {
+func (c *conn) Close(_ context.Context) error {
+	c.evl.Close()
+
+	// prevent racing between disconnects and connects
+	c.group.Wait()
 	return nil
 }
 
@@ -103,45 +148,87 @@ func (c *conn) Disconnected() <-chan struct{} {
 	return c.done
 }
 
-// server (peripheral)
-func (c *conn) subscribed(char *ble.Characteristic) {
-	h := char.Handle
-	if _, found := c.notifiers[h]; found {
-		return
-	}
-	send := func(b []byte) (int, error) {
-		err := c.dev.sendCmd(c.dev.pm, cmdSubscribed, xpc.Dict{
-			"kCBMsgArgUUIDs":       [][]byte{},
-			"kCBMsgArgAttributeID": h,
-			"kCBMsgArgData":        b,
-		})
-		return len(b), err
-	}
-	n := ble.NewNotifier(send)
-	c.notifiers[h] = n
-	req := ble.NewRequest(c, nil, 0) // convey *conn to user handler.
-	go char.NotifyHandler.ServeNotify(req, n)
-}
+// processChrRead handles an incoming read response.  CoreBluetooth does not
+// distinguish explicit reads from unsolicited notifications.  This function
+// identifies which type the incoming message is.
+func (c *conn) processChrRead(err error, cbchr cbgo.Characteristic) {
+	c.RLock()
+	defer c.RUnlock()
 
-// server (peripheral)
-func (c *conn) unsubscribed(char *ble.Characteristic) {
-	if n, found := c.notifiers[char.Handle]; found {
-		if err := n.Close(); err != nil {
-			log.Printf("failed to clone notifier: %s\n", err)
+	uuidStr := uuidStrWithDashes(cbchr.UUID().String())
+	found := false
+
+	ch := c.chrReads[uuidStr]
+	if ch != nil {
+		select {
+		case ch <- err:
+		case <-c.done:
 		}
-		delete(c.notifiers, char.Handle)
+		found = true
+	}
+
+	s := c.subs[uuidStr]
+	if s != nil {
+		s.fn(cbchr.Value())
+		found = true
+	}
+
+	if !found {
+		log.Printf("received characteristic read response without corresponding request: uuid=%s", uuidStr)
 	}
 }
 
-func (c *conn) sendReq(id int, args xpc.Dict) (msg, error) {
-	err := c.dev.sendCmd(c.dev.cm, id, args)
-	if err != nil {
-		return msg{}, err
+// addChrReader starts listening for a solicited read response.
+func (c *conn) addChrReader(char *ble.Characteristic) (chan error, error) {
+	uuidStr := uuidStrWithDashes(char.UUID.String())
+
+	c.Lock()
+	defer c.Unlock()
+
+	if ch, ok := c.chrReads[uuidStr]; ok && ch != nil {
+		return nil, fmt.Errorf("cannot read from the same attribute twice: uuid=%s", uuidStr)
 	}
-	m := <-c.rspc
-	return msg(m.args()), nil
+
+	ch := make(chan error)
+	c.chrReads[uuidStr] = ch
+
+	return ch, nil
 }
 
-func (c *conn) sendCmd(id int, args xpc.Dict) error {
-	return c.dev.sendCmd(c.dev.pm, id, args)
+// delChrReader stops listening for a solicited read response.
+func (c *conn) delChrReader(char *ble.Characteristic) {
+	c.Lock()
+	defer c.Unlock()
+
+	uuidStr := uuidStrWithDashes(char.UUID.String())
+	delete(c.chrReads, uuidStr)
+}
+
+// addSub starts listening for unsolicited notifications and indications for a
+// particular characteristic.
+func (c *conn) addSub(char *ble.Characteristic, fn ble.NotificationHandler) {
+	uuidStr := uuidStrWithDashes(char.UUID.String())
+
+	c.Lock()
+	defer c.Unlock()
+
+	// It feels like we should return an error if we are already subscribed to
+	// this characteristic.  Just quietly overwrite the existing handler to
+	// preserve backwards compatibility.
+
+	c.subs[uuidStr] = &sub{
+		fn:   fn,
+		char: char,
+	}
+}
+
+// delSub stops listening for unsolicited notifications and indications for a
+// particular characteristic.
+func (c *conn) delSub(char *ble.Characteristic) {
+	uuidStr := uuidStrWithDashes(char.UUID.String())
+
+	c.Lock()
+	defer c.Unlock()
+
+	delete(c.subs, uuidStr)
 }
