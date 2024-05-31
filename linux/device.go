@@ -309,10 +309,12 @@ func (d *Device) DialBLE(ctx context.Context, address ble.Addr, addressType ble.
 		return nil, ctx.Err()
 	default:
 	}
+	fmt.Println("temporarily stopping scan")
 	if err = d.tempStop(); err != nil {
 		return nil, fmt.Errorf("failed to temporary stop scan: %w", err)
 	}
 	cli, err = d.HCI.Dial(ctx, address, addressType)
+	fmt.Println("restarting scan")
 	d.tempStart()
 	return cli, err
 }

@@ -528,7 +528,7 @@ func (h *HCI) handleACL(b []byte) error {
 
 func (h *HCI) handleEvt(b []byte) error {
 	code, plen := int(b[0]), int(b[1])
-	h.log.Debug("handling packet event", slog.Int("code", code))
+	//h.log.Debug("handling packet event", slog.Int("code", code))
 	if plen != len(b[2:]) {
 		return fmt.Errorf("invalid event packet: % X", b)
 	}
@@ -566,17 +566,12 @@ func (h *HCI) handleLEMeta(b []byte) error {
 }
 
 func (h *HCI) handleLEAdvertisingReport(b []byte) error {
-	h.log.Debug("handle LE advertising report")
-	defer h.log.Debug("handle LE advertising report")
 	if h.advHandler == nil {
 		return nil
 	}
 
 	e := evt.LEAdvertisingReport(b)
 	for i := 0; i < int(e.NumReports()); i++ {
-		addr := e.Address(i)
-		slog.Debug("advertisement report", log.Bytes("address", addr[:]), log.Uint8("event type", e.EventType(i)))
-
 		var a *Advertisement
 		switch e.EventType(i) {
 		case evtTypAdvScanInd, evtTypAdvInd:
@@ -606,8 +601,6 @@ func (h *HCI) handleLEAdvertisingReport(b []byte) error {
 
 		h.Add(1)
 		go func(advertisement *Advertisement) {
-			h.log.Debug("handling adv", log.Stringer("advertisement", advertisement.Address()))
-			defer h.log.Debug("handled adv", log.Stringer("advertisement", advertisement.Address()))
 			defer h.Done()
 			h.advHandler(a)
 		}(a)

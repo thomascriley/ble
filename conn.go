@@ -9,7 +9,7 @@ import (
 type Conn interface {
 	io.ReadWriter
 
-	// close takes a context for sending the disconnect command to the peripheral
+	// Close takes a context for sending the disconnect command to the peripheral
 	Close(ctx context.Context) error
 
 	// LocalAddr returns local device's address.
