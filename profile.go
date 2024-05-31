@@ -1,6 +1,8 @@
 package ble
 
-import "github.com/thomascriley/ble/log"
+import (
+	"log/slog"
+)
 
 // NewService creates and initialize a new Service using u as it's UUID.
 func NewService(u UUID) *Service {
@@ -90,11 +92,13 @@ func (p *Profile) FindDescriptor(desc *Descriptor) *Descriptor {
 
 // A Service is a BLE service.
 type Service struct {
-	UUID            UUID `json:"uuid"`
+	UUID            UUID              `json:"uuid"`
 	Characteristics []*Characteristic `json:"characteristics"`
 
 	Handle    uint16 `json:"handle"`
 	EndHandle uint16 `json:"endHandle"`
+
+	log *slog.Logger
 }
 
 // AddCharacteristic adds a characteristic to a service.
@@ -105,6 +109,7 @@ func (s *Service) AddCharacteristic(c *Characteristic) *Characteristic {
 			panic("service already contains a characteristic with UUID " + c.UUID.String())
 		}
 	}
+	c.log = s.log.With(slog.String("characteristic", c.UUID.String()))
 	s.Characteristics = append(s.Characteristics, c)
 	return c
 }
@@ -112,39 +117,45 @@ func (s *Service) AddCharacteristic(c *Characteristic) *Characteristic {
 // NewCharacteristic adds a characteristic to a service.
 // NewCharacteristic panics if the service already contains another characteristic with the same UUID.
 func (s *Service) NewCharacteristic(u UUID) *Characteristic {
-	return s.AddCharacteristic(&Characteristic{UUID: u})
+	return s.AddCharacteristic(&Characteristic{
+		UUID: u,
+		log:  s.log.With(slog.String("characteristic", u.String())),
+	})
 }
 
 // A Characteristic is a BLE characteristic.
 type Characteristic struct {
-	UUID        UUID `json:"uuid"`
-	Property    Property `json:"property"`
-	Secure      Property `json:"secure"`
+	UUID        UUID          `json:"uuid"`
+	Property    Property      `json:"property"`
+	Secure      Property      `json:"secure"`
 	Descriptors []*Descriptor `json:"descriptors"`
-	CCCD        *Descriptor `json:"cccd"`
+	CCCD        *Descriptor   `json:"cccd"`
 
 	Value []byte `json:"value"`
 
-	ReadHandler     ReadHandler `json:"-"`
-	WriteHandler    WriteHandler `json:"-"`
+	ReadHandler     ReadHandler   `json:"-"`
+	WriteHandler    WriteHandler  `json:"-"`
 	NotifyHandler   NotifyHandler `json:"-"`
 	IndicateHandler NotifyHandler `json:"-"`
 
 	Handle      uint16 `json:"handle"`
 	ValueHandle uint16 `json:"valueHandle"`
 	EndHandle   uint16 `json:"endHandle"`
+
+	log *slog.Logger
 }
 
 // AddDescriptor adds a descriptor to a characteristic.
 // AddDescriptor panics if the characteristic already contains another descriptor with the same UUID.
 func (c *Characteristic) AddDescriptor(d *Descriptor) *Descriptor {
 	for _, x := range c.Descriptors {
-		log.Printf("%s: Existing Descriptor: %s", c.UUID, d.UUID)
+		c.log.Debug("existing descriptor", slog.String("descriptor", d.UUID.String()))
 		if x.UUID.Equal(d.UUID) {
 			panic("characteristic already contains a descriptor with UUID " + d.UUID.String())
 		}
 	}
-	log.Printf("%s: Adding Descriptor: %s", c.UUID, d.UUID)
+	c.log.Debug("adding descriptor", slog.String("descriptor", d.UUID.String()))
+	d.log = c.log.With(slog.String("descriptor", d.UUID.String()))
 	c.Descriptors = append(c.Descriptors, d)
 	return d
 }
@@ -152,7 +163,10 @@ func (c *Characteristic) AddDescriptor(d *Descriptor) *Descriptor {
 // NewDescriptor adds a descriptor to a characteristic.
 // NewDescriptor panics if the characteristic already contains another descriptor with the same UUID.
 func (c *Characteristic) NewDescriptor(u UUID) *Descriptor {
-	return c.AddDescriptor(&Descriptor{UUID: u})
+	return c.AddDescriptor(&Descriptor{
+		UUID: u,
+		log:  c.log.With(slog.String("descriptor", u.String())),
+	})
 }
 
 // SetValue makes the characteristic support read requests, and returns a static value.
@@ -160,7 +174,7 @@ func (c *Characteristic) NewDescriptor(u UUID) *Descriptor {
 // SetValue panics if the characteristic has been configured with a ReadHandler.
 func (c *Characteristic) SetValue(b []byte) {
 	if c.ReadHandler != nil {
-		panic("charactristic has been configured with a read handler")
+		panic("characteristic has been configured with a read handler")
 	}
 	c.Property |= CharRead
 	c.Value = make([]byte, len(b))
@@ -172,7 +186,7 @@ func (c *Characteristic) SetValue(b []byte) {
 // HandleRead panics if the characteristic has been configured with a static value.
 func (c *Characteristic) HandleRead(h ReadHandler) {
 	if c.Value != nil {
-		panic("charactristic has been configured with a static value")
+		panic("characteristic has been configured with a static value")
 	}
 	c.Property |= CharRead
 	c.ReadHandler = h
@@ -202,14 +216,16 @@ func (c *Characteristic) HandleIndicate(h NotifyHandler) {
 
 // Descriptor is a BLE descriptor
 type Descriptor struct {
-	UUID     UUID `json:"uuid"`
+	UUID     UUID     `json:"uuid"`
 	Property Property `json:"property"`
 
 	Handle uint16 `json:"handle"`
 	Value  []byte `json:"value"`
 
-	ReadHandler  ReadHandler `json:"-"`
+	ReadHandler  ReadHandler  `json:"-"`
 	WriteHandler WriteHandler `json:"-"`
+
+	log *slog.Logger
 }
 
 // SetValue makes the descriptor support read requests, and returns a static value.

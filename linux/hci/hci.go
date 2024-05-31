@@ -5,17 +5,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/thomascriley/ble"
-	"github.com/thomascriley/ble/log"
 	"github.com/thomascriley/ble/linux/hci/cmd"
 	"github.com/thomascriley/ble/linux/hci/evt"
 	"github.com/thomascriley/ble/linux/hci/socket"
 	"github.com/thomascriley/ble/linux/smp"
+	"github.com/thomascriley/ble/log"
 )
 
 // Command ...
@@ -43,7 +44,7 @@ type nameHandlers struct {
 }
 
 // NewHCI returns a hci device.
-func NewHCI() *HCI {
+func NewHCI(log *slog.Logger) *HCI {
 	h := &HCI{
 		id: -1,
 
@@ -57,8 +58,8 @@ func NewHCI() *HCI {
 		subh:     map[int]handlerFn{},
 		subMutex: &sync.RWMutex{},
 
-		adHist: make(map[string]*Advertisement,0),
-		adTimes: make(map[string]time.Time,0),
+		adHist:  make(map[string]*Advertisement, 0),
+		adTimes: make(map[string]time.Time, 0),
 
 		dynamicCID: cidDynamicStart,
 
@@ -67,6 +68,8 @@ func NewHCI() *HCI {
 		chMasterConn:      make(chan *Conn),
 		chMasterBREDRConn: make(chan *Conn),
 		chSlaveConn:       make(chan *Conn),
+
+		log: log.With("device", "hci"),
 
 		//done: make(chan bool),
 	}
@@ -142,15 +145,16 @@ type HCI struct {
 	smpCapabilites smp.Capabilities
 
 	// holds socket errors before closing
-	err  error
+	err error
 
 	initialized bool
+	log         *slog.Logger
 	//done chan bool
 }
 
 // Init ...
 func (h *HCI) Init(ctx context.Context) (err error) {
-	if h.initialized{
+	if h.initialized {
 		return ble.ErrAlreadyInitialized
 	}
 	h.initialized = true
@@ -199,7 +203,7 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 		return fmt.Errorf("unable to create new socket: %w", err)
 	}
 	h.Add(1)
-	go func(){
+	go func() {
 		defer h.Close()
 		defer h.Done()
 		h.sktLoop()
@@ -209,7 +213,7 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 		return fmt.Errorf("unable to set allowed commands: %w", err)
 	}
 
-	log.Print("BLE HCI: hci init")
+	h.log.Debug("hci init")
 	if err := h.init(ctx); err != nil {
 		return err
 	}
@@ -222,13 +226,13 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 	defer h.params.RUnlock()
 
 	if h.params.advEnable.AdvertisingEnable == 1 {
-		log.Print("BLE HCI: send adv params")
+		h.log.Debug("send adv params")
 		if err := h.Send(ctx, &h.params.advParams, nil); err != nil {
 			return fmt.Errorf("unable to send advertising params: %w", err)
 		}
 	}
 
-	log.Print("BLE HCI: send scan params")
+	h.log.Debug("send scan params")
 	if err := h.Send(ctx, &h.params.scanParams, nil); err != nil {
 		return fmt.Errorf("unable to send scan params: %w", err)
 	}
@@ -239,18 +243,18 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 func (h *HCI) Close() error {
 	defer h.Wait()
 
-	errored := make([]string,0)
+	errored := make([]string, 0)
 	if h.skt != nil {
 		// 2 seconds to close all connections
-		ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		log.Print("BLE HCI: closing connections")
+		h.log.Debug("closing connections")
 		// close connections to all peripherals
 		h.muConns.Lock()
 		for _, c := range h.conns {
 			// 200 milliseconds to close each connection
-			subCtx, cancel := context.WithTimeout(ctx, 200 * time.Millisecond)
+			subCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
 			if err := c.Close(subCtx); err != nil {
 				errored = append(errored, err.Error())
 			}
@@ -258,12 +262,12 @@ func (h *HCI) Close() error {
 		}
 		h.muConns.Unlock()
 
-		log.Print("BLE HCI: closing socket")
+		h.log.Debug("closing socket")
 		if err := h.skt.Close(); err != nil {
 			errored = append(errored, err.Error())
 		}
 	}
-	log.Print("BLE HCI: closed")
+	h.log.Debug("closed")
 	if len(errored) > 0 {
 		return fmt.Errorf("unable to nicely close: %s", strings.Join(errored, ", "))
 	}
@@ -282,12 +286,12 @@ func (h *HCI) Closed() chan struct{} {
 }
 
 func (h *HCI) init(ctx context.Context) error {
-	log.Print("BLE HCI: reseting")
-	if err := h.Send(ctx, &cmd.Reset{}, nil); err!= nil {
+	h.log.Debug("reseting")
+	if err := h.Send(ctx, &cmd.Reset{}, nil); err != nil {
 		return fmt.Errorf("unable to reset: %w", err)
 	}
 
-	log.Print("BLE HCI: read db addr")
+	h.log.Debug("read db addr")
 	ReadBDADDRRP := cmd.ReadBDADDRRP{}
 	if err := h.Send(ctx, &cmd.ReadBDADDR{}, &ReadBDADDRRP); err != nil {
 		return fmt.Errorf("unable to read BDADDR: %w", err)
@@ -296,7 +300,7 @@ func (h *HCI) init(ctx context.Context) error {
 	a := ReadBDADDRRP.BDADDR
 	h.addr = []byte{a[5], a[4], a[3], a[2], a[1], a[0]}
 
-	log.Print("BLE HCI: read buffer size")
+	h.log.Debug("read buffer size")
 	ReadBufferSizeRP := cmd.ReadBufferSizeRP{}
 	if err := h.Send(ctx, &cmd.ReadBufferSize{}, &ReadBufferSizeRP); err != nil {
 		return fmt.Errorf("unable to read buffer size: %w", err)
@@ -306,7 +310,7 @@ func (h *HCI) init(ctx context.Context) error {
 	h.bufCnt = int(ReadBufferSizeRP.HCTotalNumACLDataPackets)
 	h.bufSize = int(ReadBufferSizeRP.HCACLDataPacketLength)
 
-	log.Print("BLE HCI: le read buffer size")
+	h.log.Debug("le read buffer size")
 	LEReadBufferSizeRP := cmd.LEReadBufferSizeRP{}
 	if err := h.Send(ctx, &cmd.LEReadBufferSize{}, &LEReadBufferSizeRP); err != nil {
 		return fmt.Errorf("unable to read le buffer size: %w", err)
@@ -318,7 +322,7 @@ func (h *HCI) init(ctx context.Context) error {
 		h.bufSize = int(LEReadBufferSizeRP.HCLEDataPacketLength)
 	}
 
-	log.Print("BLE HCI: le read advertising channel")
+	h.log.Debug("le read advertising channel")
 
 	LEReadAdvertisingChannelTxPowerRP := cmd.LEReadAdvertisingChannelTxPowerRP{}
 	if err := h.Send(ctx, &cmd.LEReadAdvertisingChannelTxPower{}, &LEReadAdvertisingChannelTxPowerRP); err != nil {
@@ -327,31 +331,31 @@ func (h *HCI) init(ctx context.Context) error {
 
 	h.txPwrLv = int(LEReadAdvertisingChannelTxPowerRP.TransmitPowerLevel)
 
-	log.Print("BLE HCI: le set event mask")
+	h.log.Debug("le set event mask")
 	LESetEventMaskRP := cmd.LESetEventMaskRP{}
 	if err := h.Send(ctx, &cmd.LESetEventMask{LEEventMask: 0x000000000000001F}, &LESetEventMaskRP); err != nil {
 		return fmt.Errorf("unable to set le event mask: %w", err)
 	}
 
-	log.Print("BLE HCI: set event mask")
+	h.log.Debug("set event mask")
 	SetEventMaskRP := cmd.SetEventMaskRP{}
 	if err := h.Send(ctx, &cmd.SetEventMask{EventMask: 0x3dbff807fffbffff}, &SetEventMaskRP); err != nil {
 		return fmt.Errorf("unable to set event mask: %w", err)
 	}
 
-	log.Print("BLE HCI: write le host support")
+	h.log.Debug("write le host support")
 	WriteLEHostSupportRP := cmd.WriteLEHostSupportRP{}
 	if err := h.Send(ctx, &cmd.WriteLEHostSupport{LESupportedHost: 1, SimultaneousLEHost: 0}, &WriteLEHostSupportRP); err != nil {
 		return fmt.Errorf("unable to write le host support: %w", err)
 	}
 
-	log.Print("BLE HCI: done init")
+	h.log.Debug("done init")
 	return nil
 }
 
 // Send ...
 func (h *HCI) Send(ctx context.Context, c Command, r CommandRP) error {
-	log.Printf("BLE HCI: Sending command %d with response %T", c.OpCode(), r)
+	h.log.Debug("sending command", slog.Int("opcode", c.OpCode()), slog.String("response", fmt.Sprintf("%T", r)))
 	// reuse the byte array, marshalling the new command into it
 	var b []byte
 	select {
@@ -391,7 +395,7 @@ func (h *HCI) Send(ctx context.Context, c Command, r CommandRP) error {
 	// clear sent table when done, we sometimes get command complete or
 	// command status messages with no matching send, which can attempt to
 	// access stale packets in sent and fail or lock up.
-	defer func(){
+	defer func() {
 		h.sentMutex.Lock()
 		delete(h.sent, c.OpCode())
 		h.sentMutex.Unlock()
@@ -416,7 +420,10 @@ func (h *HCI) Send(ctx context.Context, c Command, r CommandRP) error {
 			if r != nil {
 				if err := r.Unmarshal(b); err != nil {
 					// assume this is due to receiving a response of previous command that timed out
-					log.Printf("could not unmarshal bytes into `%T` - %02X: %s",r, b, err)
+					h.log.Warn("could not unmarshal bytes",
+						slog.String("response", fmt.Sprintf("%T", r)),
+						slog.String("bytes", fmt.Sprintf("%02X", b)),
+						log.Error(err))
 					continue
 				}
 			}
@@ -448,9 +455,9 @@ func (h *HCI) subHandler(code int) (handlerFn, bool) {
 
 func (h *HCI) sktLoop() {
 	var (
-		n int
+		n   int
 		err error
-		b = make([]byte, 4096)
+		b   = make([]byte, 4096)
 	)
 	for {
 		// wait for read packet or for the socket to close
@@ -467,14 +474,14 @@ func (h *HCI) sktLoop() {
 		// ignore some select errors, others should be printed for future work
 		switch {
 		case err == nil:
-		case errors.Is(err,ErrUnknownCommand), errors.Is(err,ErrUnsupportedCommand):
+		case errors.Is(err, ErrUnknownCommand), errors.Is(err, ErrUnsupportedCommand):
 			if err2 := h.setAllowedCommands(1); err2 != nil {
-				log.Printf("unable to set allowed commands `%s` after error: %s", err2, err)
+				h.log.Warn("failed to set allowed commands after read error", slog.String("allowed error", err2.Error()), log.Error(err))
 			}
-		case errors.Is(err,ErrUnsupportedVendorPacket):
-		case errors.Is(err,ErrUnsupportedScoPacket):
+		case errors.Is(err, ErrUnsupportedVendorPacket):
+		case errors.Is(err, ErrUnsupportedScoPacket):
 		default:
-			log.Printf("skt: %s\n", err)
+			h.log.Warn("read error", log.Error(err))
 		}
 	}
 }
@@ -488,18 +495,18 @@ func (h *HCI) handlePkt(b []byte) error {
 	case pktTypeACLData:
 		return h.handleACL(b)
 	case pktTypeSCOData:
-		return fmt.Errorf("%w: % X",ErrUnsupportedScoPacket, b)
+		return fmt.Errorf("%w: % X", ErrUnsupportedScoPacket, b)
 	case pktTypeEvent:
 		return h.handleEvt(b)
 	case pktTypeVendor:
-		return fmt.Errorf("%w: % X",ErrUnsupportedVendorPacket, b)
+		return fmt.Errorf("%w: % X", ErrUnsupportedVendorPacket, b)
 	default:
-		return fmt.Errorf("%w: 0x%02X % X",ErrInvalidPacket, t, b)
+		return fmt.Errorf("%w: 0x%02X % X", ErrInvalidPacket, t, b)
 	}
 }
 
 func (h *HCI) handleACL(b []byte) error {
-	log.PacketPrint("BLE HCI: handling packet acl")
+	h.log.Debug("handling packet acl")
 
 	handle := packet(b).handle()
 	h.muConns.Lock()
@@ -511,7 +518,7 @@ func (h *HCI) handleACL(b []byte) error {
 	select {
 	case c.chInPkt <- b:
 		return nil
-	case <- h.Closed():
+	case <-h.Closed():
 		if h.err == nil {
 			return errors.New("hci: no response to command: disconnected")
 		}
@@ -521,7 +528,7 @@ func (h *HCI) handleACL(b []byte) error {
 
 func (h *HCI) handleEvt(b []byte) error {
 	code, plen := int(b[0]), int(b[1])
-	log.PacketPrintf("BLE HCI: handling packet event: %d", code)
+	h.log.Debug("handling packet event", slog.Int("code", code))
 	if plen != len(b[2:]) {
 		return fmt.Errorf("invalid event packet: % X", b)
 	}
@@ -559,15 +566,16 @@ func (h *HCI) handleLEMeta(b []byte) error {
 }
 
 func (h *HCI) handleLEAdvertisingReport(b []byte) error {
-	log.AdvPrint("BLE HCI: handle LE advertising report")
-	defer log.AdvPrint("BLE HCI: handle LE advertising report")
+	h.log.Debug("handle LE advertising report")
+	defer h.log.Debug("handle LE advertising report")
 	if h.advHandler == nil {
 		return nil
 	}
 
 	e := evt.LEAdvertisingReport(b)
 	for i := 0; i < int(e.NumReports()); i++ {
-		log.AdvPrintf("BLE HCI: adv %02X - %d", e.Address(i), e.EventType(i))
+		addr := e.Address(i)
+		slog.Debug("advertisement report", log.Bytes("address", addr[:]), log.Uint8("event type", e.EventType(i)))
 
 		var a *Advertisement
 		switch e.EventType(i) {
@@ -598,8 +606,8 @@ func (h *HCI) handleLEAdvertisingReport(b []byte) error {
 
 		h.Add(1)
 		go func(advertisement *Advertisement) {
-			log.AdvPrintf("BLE HCI: handling adv %s", advertisement.Address())
-			defer log.AdvPrintf("BLE HCI: handled adv %s", advertisement.Address())
+			h.log.Debug("handling adv", log.Stringer("advertisement", advertisement.Address()))
+			defer h.log.Debug("handled adv", log.Stringer("advertisement", advertisement.Address()))
 			defer h.Done()
 			h.advHandler(a)
 		}(a)
@@ -692,7 +700,7 @@ func (h *HCI) handleLEConnectionComplete(b []byte) error {
 		h.params.RUnlock()
 
 		if enabled == 1 {
-			if err := h.Send(context.Background(), &cmd.LESetAdvertiseEnable{AdvertisingEnable:0}, nil); err != nil {
+			if err := h.Send(context.Background(), &cmd.LESetAdvertiseEnable{AdvertisingEnable: 0}, nil); err != nil {
 				_ = h.Close()
 				return fmt.Errorf("unable to renable advertising: %w", err)
 			}
@@ -736,7 +744,7 @@ func (h *HCI) handleDisconnectionComplete(b []byte) error {
 		h.params.RLock()
 		if h.params.advEnable.AdvertisingEnable == 1 {
 			h.Add(1)
-			go func(){
+			go func() {
 				defer h.Done()
 				if err := h.Send(context.Background(), &h.params.advEnable, nil); err != nil {
 					h.err = fmt.Errorf("unable to reenable advertising: %w", err)
@@ -786,7 +794,7 @@ func (h *HCI) handleNumberOfCompletedPackets(b []byte) error {
 	return nil
 }
 
-func (h *HCI) handleLELongTermKeyRequest( b []byte) error {
+func (h *HCI) handleLELongTermKeyRequest(b []byte) error {
 	e := evt.LELongTermKeyRequest(b)
 	return h.Send(context.Background(), &cmd.LELongTermKeyRequestNegativeReply{
 		ConnectionHandle: e.ConnectionHandle(),
@@ -803,7 +811,7 @@ func (h *HCI) handleExtendedInquiry(b []byte) error {
 	}
 	// always a single response [Vol2, 7.7.38]
 	h.Add(1)
-	go func(){
+	go func() {
 		defer h.Done()
 		h.inqHandler(newInquiry(evt.ExtendedInquiry(b), 0))
 	}()
@@ -819,10 +827,10 @@ func (h *HCI) handleInquiryResult(b []byte) error {
 	e := evt.InquiryResult(b)
 	for i := 0; i < int(e.NumResponses()); i++ {
 		h.Add(1)
-		go func(e evt.InquiryResult, i int){
+		go func(e evt.InquiryResult, i int) {
 			defer h.Done()
 			h.inqHandler(newInquiry(e, i))
-		}( e, i)
+		}(e, i)
 	}
 	return nil
 }
@@ -835,7 +843,7 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 	e := evt.InquiryResultwithRSSI(b)
 	for i := 0; i < int(e.NumResponses()); i++ {
 		h.Add(1)
-		go func(e evt.InquiryResultwithRSSI, i int){
+		go func(e evt.InquiryResultwithRSSI, i int) {
 			defer h.Done()
 			h.inqHandler(newInquiry(e, i))
 		}(e, i)

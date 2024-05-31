@@ -2,11 +2,11 @@ package hci
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/thomascriley/ble/log"
 	"net"
 	"time"
-	"errors"
 
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/hci/cmd"
@@ -112,7 +112,7 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 	}
 	addr := [6]byte{b[5], b[4], b[3], b[2], b[1], b[0]}
 
-	if err := h.sendBREDRParams(ctx, addr, clockOffset,pageScanRepetitionMode); err != nil {
+	if err := h.sendBREDRParams(ctx, addr, clockOffset, pageScanRepetitionMode); err != nil {
 		return nil, fmt.Errorf("unable to send BREDR params: %w", err)
 	}
 
@@ -136,20 +136,20 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		timeout := 15 * time.Second
 
 		if err = c.InformationRequest(ctx, l2cap.InfoTypeConnectionlessMTU, timeout); err != nil {
-			log.Printf("Warning: unable to make information request for connectionless mtu: %s\n", err)
+			h.log.Warn("failed to make information request for connectionless mtu", log.Error(err))
 			//c.Close()
 			//return nil, err
 		}
 
 		if err = c.InformationRequest(ctx, l2cap.InfoTypeExtendedFeatures, timeout); err != nil {
-			log.Printf("Warning: unable to make information request for extended features: %s\n", err)
+			h.log.Warn("failed to make information request for extended features", log.Error(err))
 			//c.Close()
 			//return nil, err
 		}
 
 		// 1.2 - 2.1 + EDR will return not supported
 		if err = c.InformationRequest(ctx, l2cap.InfoTypeFixedChannels, timeout); err != nil {
-			log.Printf("Warning: unable to make information request for fixed channels: %s\n", err)
+			h.log.Warn("failed to make information request for fixed channels", log.Error(err))
 		}
 
 		if err = c.ConnectionRequest(ctx, psmRFCOMM, timeout); err != nil {
@@ -178,7 +178,7 @@ func (h *HCI) DialRFCOMM(ctx context.Context, a ble.Addr, clockOffset uint16, pa
 		case <-c.cfgRequest:
 		}
 
-		cli := rfcomm.NewClient(c, channel)
+		cli := rfcomm.NewClient(h.log, c, channel)
 		if err := cli.DialContext(ctx); err != nil {
 			_ = c.Close(ctx)
 			return nil, fmt.Errorf("unable to dial client: %w", err)
@@ -199,7 +199,7 @@ func (h *HCI) cancelConnectionBREDR(ctx context.Context, addr [6]byte, connErr e
 	}
 	// The connection has been established, the cancel command
 	// failed with ErrDisallowed.
-	if err == ErrDisallowed {
+	if errors.Is(err, ErrDisallowed) {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timed out canceling connection: %w", ctx.Err())
@@ -209,5 +209,5 @@ func (h *HCI) cancelConnectionBREDR(ctx context.Context, addr [6]byte, connErr e
 			_ = c.Close(ctx)
 		}
 	}
-	return fmt.Errorf( "cancel connection failed: %w", err)
+	return fmt.Errorf("cancel connection failed: %w", err)
 }

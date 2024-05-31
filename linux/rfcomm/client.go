@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/thomascriley/ble/log"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -38,11 +39,13 @@ type Client struct {
 	flowControl bool
 	credits     uint16
 	waitCredits chan struct{}
+
+	log *slog.Logger
 }
 
 // NewClient returns an RFCOMM Client that has been initialized according to the
 // RFCOMM specifications.
-func NewClient(l2c ble.Conn, channel uint8) *Client {
+func NewClient(log *slog.Logger, l2c ble.Conn, channel uint8) *Client {
 	c := &Client{
 		l2c:           l2c,
 		p2p:           make(chan []byte, 1),
@@ -50,7 +53,9 @@ func NewClient(l2c ble.Conn, channel uint8) *Client {
 		chTxBuf:       make(chan []byte, 1),
 		waitCredits:   make(chan struct{}),
 		rxBuf:         make([]byte, ble.MaxACLMTU),
-		serverChannel: channel}
+		serverChannel: channel,
+		log:           log.With("client", "rfcomm"),
+	}
 	c.chTxBuf <- make([]byte, l2c.TxMTU(), l2c.TxMTU())
 	return c
 }
@@ -67,7 +72,7 @@ func (c *Client) DialContext(ctx context.Context) (err error) {
 	success, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go func(timeout context.Context, success context.Context){
+	go func(timeout context.Context, success context.Context) {
 		defer group.Done()
 		select {
 		case <-timeout.Done():
@@ -78,7 +83,7 @@ func (c *Client) DialContext(ctx context.Context) (err error) {
 	}(ctx, success)
 
 	c.Add(1)
-	go func(){
+	go func() {
 		defer c.Done()
 		c.loop()
 	}()
@@ -121,7 +126,7 @@ func (c *Client) connect(ctx context.Context) error {
 
 	// send parameter negotiation [optional]
 	if err := c.sendParameterNegotiation(Priority, MaxFrameSize); err != nil {
-		log.Printf("Error negotiating the rfcomm parameters: %s\n", err)
+		c.log.Debug("Error negotiating the rfcomm parameters: %s\n", err)
 	}
 
 	// send SABM on (DLCI X)
@@ -221,10 +226,10 @@ func (c *Client) Write(v []byte) (int, error) {
 		if c.credits == 0 {
 			c.waitCredits = make(chan struct{})
 		}
-		log.Printf("Credits: %d", c.credits)
+		c.log.Debug("flowcontrol", log.Uint16("credits", c.credits))
 	}
 
-	return len(v), c.sendFrame( &frame{
+	return len(v), c.sendFrame(&frame{
 		ControlNumber:      ControlNumberUIH,
 		CommmandResponse:   0x01,
 		Direction:          0x00,
@@ -491,7 +496,7 @@ func (c *Client) sendMultiplexerFrame(m multiplexer.Multiplexer) error {
 		return err
 	}
 	if _, ok := m.(*multiplexer.Test); ok {
-		return c.sendUIHFrame( 0x00, c.serverChannel, 0x01, b)
+		return c.sendUIHFrame(0x00, c.serverChannel, 0x01, b)
 	}
 	return c.sendUIHFrame(0x00, 0x00, 0x00, b)
 }
@@ -598,13 +603,13 @@ func (c *Client) getFrame() (*frame, error) {
 			switch frm.ControlNumber {
 			case ControlNumberDISC:
 				serverChannelNumbers.Remove(c.serverChannel)
-				ctx, cancel := context.WithTimeout(context.Background(), 200 * time.Millisecond)
+				ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 				_ = c.l2c.Close(ctx)
 				cancel()
 				return nil, errors.New("received disconnect")
 			case ControlNumberDM:
 				serverChannelNumbers.Remove(c.serverChannel)
-				ctx, cancel := context.WithTimeout(context.Background(), 200 * time.Millisecond)
+				ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 				_ = c.l2c.Close(ctx)
 				cancel()
 				return nil, errors.New("received disconnect mode")

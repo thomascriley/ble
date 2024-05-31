@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/thomascriley/ble/log"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 
@@ -161,7 +162,7 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 			if err := c.recombine(); err != nil {
 				if err != io.EOF {
 					// TODO: wrap and pass the error up.
-					log.Printf("recombine failed: %s\n", err)
+					h.log.Warn("recombine failed", log.Error(err))
 				}
 				close(c.chInPDU)
 				return
@@ -224,7 +225,7 @@ func (c *Conn) Read(sdu []byte) (n int, err error) {
 // Write breaks down a L2CAP SDU into segmants [Vol 3, Part A, 7.3.1]
 func (c *Conn) Write(sdu []byte) (int, error) {
 	if len(sdu) > c.txMTU {
-		return 0, fmt.Errorf("payload exceeds mtu: %w",io.ErrShortWrite)
+		return 0, fmt.Errorf("payload exceeds mtu: %w", io.ErrShortWrite)
 	}
 
 	plen := len(sdu)
@@ -291,7 +292,7 @@ func (c *Conn) writePDU(pdu []byte) (int, error) {
 			return sent, errors.New("timed out")
 		}
 
-		flen := len(pdu)        // fragment length
+		flen := len(pdu) // fragment length
 		if flen > pkt.Cap()-1-4 {
 			flen = pkt.Cap() - 1 - 4
 		}
@@ -330,7 +331,7 @@ func (c *Conn) writePDU(pdu []byte) (int, error) {
 		sent += flen
 
 		flags = pbfContinuing << 4 // Set "continuing" in the boundary flags for the rest of fragments, if any.
-		pdu = pdu[flen:]             // Advance the point
+		pdu = pdu[flen:]           // Advance the point
 	}
 	return sent, nil
 }
@@ -339,7 +340,7 @@ func (c *Conn) writePDU(pdu []byte) (int, error) {
 func (c *Conn) recombine() error {
 	var (
 		pkt packet
-		ok bool
+		ok  bool
 	)
 	select {
 	case pkt, ok = <-c.chInPkt:
@@ -398,13 +399,13 @@ func (c *Conn) recombine() error {
 	case cid >= cidDynamicStart:
 		return c.receivePDU(p)
 	default:
-		log.Printf("recombine: unrecognized CID: %04X, [%X]\n", cid, p)
+		c.hci.log.Debug("recombine: unrecognized CID", slog.String("CID", fmt.Sprintf("%04X", cid)), log.Bytes("pdu", p))
 	}
 	return nil
 }
 
 func (c *Conn) receivePDU(p pdu) error {
-	select{
+	select {
 	case c.chInPDU <- p:
 		return nil
 	case <-c.hci.Closed():

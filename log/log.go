@@ -2,52 +2,25 @@ package log
 
 import (
 	"fmt"
+	"log/slog"
 )
 
-var (
-	LoggingEnabled = false
-	LogAdvertisements = false
-	LogPackets = false
-)
-
-func Print(s string) {
-	if LoggingEnabled {
-		fmt.Println(s)
-	}
+func Stringer(key string, value fmt.Stringer) slog.Attr {
+	return slog.String(key, value.String())
 }
 
-func Printf(s string, i ...interface{}){
-	if LoggingEnabled {
-		fmt.Printf(s +"\n", i...)
-	}
+func Error(err error) slog.Attr {
+	return slog.String("error", err.Error())
 }
 
-func Println(s string, i ...interface{}){
-	if LoggingEnabled {
-		fmt.Println(s)
-	}
+func Bytes(key string, bs []byte) slog.Attr {
+	return slog.String(key, fmt.Sprintf("%02X", bs))
 }
 
-func AdvPrint(s string){
-	if LogAdvertisements {
-		Print(s)
-	}
+func Uint8(key string, value uint8) slog.Attr {
+	return slog.Int(key, int(value))
 }
 
-func AdvPrintf(s string, i ...interface{}){
-	if LogAdvertisements {
-		Printf(s,i...)
-	}
-}
-
-func PacketPrint(s string){
-	if LogPackets {
-		Print(s)
-	}
-}
-
-func PacketPrintf(s string, i ...interface{}){
-	if LogPackets {
-		Printf(s,i...)
-	}
+func Uint16(key string, value uint16) slog.Attr {
+	return slog.Int(key, int(value))
 }

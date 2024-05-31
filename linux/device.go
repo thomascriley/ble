@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/thomascriley/ble/log"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -24,27 +25,31 @@ type Device struct {
 	allowDup     bool
 	interval     time.Duration
 
-	scanMutex    sync.Mutex
-	scanErr      chan error
-	scanning     bool
+	scanMutex       sync.Mutex
+	scanErr         chan error
+	scanning        bool
 	scanTempStopped chan bool
-	scanRequested bool
+	scanRequested   bool
 
-	inquireMutex    sync.Mutex
-	inquireErr      chan error
-	inquiring       bool
+	inquireMutex       sync.Mutex
+	inquireErr         chan error
+	inquiring          bool
 	inquireTempStopped chan bool
-	inquireRequested bool
+	inquireRequested   bool
+
+	log *slog.Logger
 }
 
 // NewDevice returns the default HCI device.
-func NewDevice() *Device {
+func NewDevice(log *slog.Logger) *Device {
+	log = log.With("package", "github.com/thomascriley/ble")
 	d := &Device{
-		HCI:        hci.NewHCI(),
-		scanErr:    make(chan error, 1),
-		inquireErr: make(chan error, 1),
-		scanTempStopped: make(chan bool),
+		HCI:                hci.NewHCI(log),
+		scanErr:            make(chan error, 1),
+		inquireErr:         make(chan error, 1),
+		scanTempStopped:    make(chan bool),
 		inquireTempStopped: make(chan bool),
+		log:                log,
 	}
 	close(d.scanTempStopped)
 	close(d.inquireTempStopped)
@@ -98,7 +103,7 @@ func (d *Device) Serve(name string, handler ble.NotifyHandler) (err error) {
 			// An EOF error indicates that the HCI socket was closed during
 			// the read.  Don't report this as an error.
 			if errors.Is(err, io.EOF) {
-				log.Printf("can't accept: %s", err)
+				d.log.Debug("can't accept", log.Error(err))
 				continue
 			}
 			if err2 := d.HCI.Close(); err2 != nil {
@@ -115,7 +120,7 @@ func (d *Device) Serve(name string, handler ble.NotifyHandler) (err error) {
 		as, err := att.NewServer(d.Server.DB(), l2c)
 		d.Server.Unlock()
 		if err != nil {
-			log.Printf("can't create ATT server: %s", err)
+			d.log.Debug("can't create ATT server", log.Error(err))
 			continue
 		}
 
@@ -237,7 +242,7 @@ func (d *Device) Scan(ctx context.Context, allowDup bool, h ble.AdvHandler) erro
 	}
 
 	d.scanRequested = true
-	defer func(){ d.scanRequested = false }()
+	defer func() { d.scanRequested = false }()
 
 	if err := d.HCI.SetAdvHandler(h); err != nil {
 		return fmt.Errorf("unable to set advertisement handler: %s", err)
@@ -268,7 +273,7 @@ func (d *Device) Inquire(ctx context.Context, interval time.Duration, numRespons
 	}
 
 	d.inquireRequested = true
-	defer func(){ d.inquireRequested = false }()
+	defer func() { d.inquireRequested = false }()
 
 	d.numResponses = numResponses
 
@@ -391,11 +396,11 @@ func (d *Device) tempStopScan() error {
 	if !d.scanRequested {
 		return nil
 	}
-	log.Print("BLE: temporarily stopping scan")
+	slog.Debug("BLE: temporarily stopping scan")
 	if err := d.stopScan(); err != nil {
 		return err
 	}
-	log.Print("BLE: temporarily stopped scan")
+	slog.Debug("BLE: temporarily stopped scan")
 	return nil
 }
 
@@ -403,11 +408,11 @@ func (d *Device) tempStopInquiry() error {
 	if !d.inquireRequested {
 		return nil
 	}
-	log.Print("BLE: temporarily stopping inquiry")
+	slog.Debug("BLE: temporarily stopping inquiry")
 	if err := d.stopInquiry(); err != nil {
 		return err
 	}
-	log.Print("BLE: temporarily stopped inquiry")
+	slog.Debug("BLE: temporarily stopped inquiry")
 	return nil
 }
 
@@ -415,32 +420,32 @@ func (d *Device) tempStartScan(ctx context.Context) {
 	if !d.scanRequested {
 		return
 	}
-	log.Print("BLE: temporarily starting scan")
+	slog.Debug("BLE: temporarily starting scan")
 	if err := d.startScan(ctx, d.allowDup); err != nil {
 		select {
 		case d.scanErr <- err:
 		default:
 		}
-		log.Printf("BLE: failed to temporarily start inquiry: %w", err)
+		slog.Debug("BLE: failed to temporarily start inquiry", slog.String("Error", err.Error()))
 		return
 	}
-	log.Print("BLE: temporarily started scan")
+	slog.Debug("BLE: temporarily started scan")
 }
 
 func (d *Device) tempStartInquiry(ctx context.Context) {
 	if !d.inquireRequested {
 		return
 	}
-	log.Print("BLE: temporarily starting inquiry")
+	slog.Debug("BLE: temporarily starting inquiry")
 	if err := d.startInquiry(ctx, d.interval); err != nil {
 		select {
 		case d.scanErr <- err:
 		default:
 		}
-		log.Printf("BLE: failed to temporarily start inquiry: %w", err)
+		slog.Debug("BLE: failed to temporarily start inquiry", slog.String("Error", err.Error()))
 		return
 	}
-	log.Print("BLE: temporarily started inquiry")
+	slog.Debug("BLE: temporarily started inquiry")
 }
 
 func (d *Device) trigger(fns ...func(ctx context.Context)) {
