@@ -18,7 +18,7 @@ import (
 
 // Device ...
 type Device struct {
-	sync.WaitGroup
+	wg           sync.WaitGroup
 	HCI          *hci.HCI
 	Server       *gatt.Server
 	numResponses int
@@ -76,7 +76,7 @@ func (d *Device) Address() ble.Addr {
 
 // Closes the gatt server.
 func (d *Device) Close() error {
-	defer d.Wait()
+	defer d.wg.Wait()
 	return d.HCI.Close()
 }
 
@@ -98,7 +98,10 @@ func (d *Device) Serve(name string, handler ble.NotifyHandler) (err error) {
 	//}
 
 	for {
-		l2c, err := d.HCI.Accept()
+		var l2c ble.Conn
+		var as *att.Server
+
+		l2c, err = d.HCI.Accept()
 		if err != nil {
 			// An EOF error indicates that the HCI socket was closed during
 			// the read.  Don't report this as an error.
@@ -106,10 +109,7 @@ func (d *Device) Serve(name string, handler ble.NotifyHandler) (err error) {
 				d.log.Debug("can't accept", log.Error(err))
 				continue
 			}
-			if err2 := d.HCI.Close(); err2 != nil {
-				return fmt.Errorf("could not accept connections: %w and could not close: %s", err, err2)
-			}
-			return fmt.Errorf("could not accept connections: %w", err)
+			return errors.Join(fmt.Errorf("could not accept connections: %w", err), d.HCI.Close())
 		}
 
 		// Initialize the per-connection cccd values.
@@ -117,19 +117,33 @@ func (d *Device) Serve(name string, handler ble.NotifyHandler) (err error) {
 		l2c.SetRxMTU(mtu)
 
 		d.Server.Lock()
-		as, err := att.NewServer(d.Server.DB(), l2c)
+		as, err = att.NewServer(d.Server.DB(), l2c)
 		d.Server.Unlock()
 		if err != nil {
 			d.log.Debug("can't create ATT server", log.Error(err))
 			continue
 		}
 
-		d.Add(1)
-		go func() {
-			defer d.Done()
-			as.Loop()
-		}()
+		d.wg.Add(2)
+		go d.serveAtt(as)
+		go d.closeAtt(l2c)
 	}
+}
+
+func (d *Device) serveAtt(as *att.Server) {
+	as.Loop()
+	d.wg.Done()
+}
+
+func (d *Device) closeAtt(l2c ble.Conn) {
+	select {
+	case <-d.Closed():
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		_ = l2c.Close(ctx)
+		cancel()
+	case <-l2c.Disconnected():
+	}
+	d.wg.Done()
 }
 
 // AddService adds a service to database.
@@ -454,9 +468,9 @@ func (d *Device) trigger(fns ...func(ctx context.Context)) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// cancel context if device closes
-	d.Add(1)
+	d.wg.Add(1)
 	go func(ctx context.Context, cancel context.CancelFunc) {
-		defer d.Done()
+		defer d.wg.Done()
 		select {
 		case <-ctx.Done():
 		case <-d.Closed():
@@ -465,9 +479,9 @@ func (d *Device) trigger(fns ...func(ctx context.Context)) {
 	}(ctx, cancel)
 
 	// trigger with context
-	d.Add(1)
+	d.wg.Add(1)
 	go func(ctx context.Context) {
-		defer d.Done()
+		defer d.wg.Done()
 		defer cancel()
 		for _, fn := range fns {
 			fn(ctx)

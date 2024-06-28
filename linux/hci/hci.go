@@ -209,12 +209,12 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 		h.sktLoop()
 	}()
 
-	if err := h.setAllowedCommands(1); err != nil {
+	if err = h.setAllowedCommands(1); err != nil {
 		return fmt.Errorf("unable to set allowed commands: %w", err)
 	}
 
 	h.log.Debug("hci init")
-	if err := h.init(ctx); err != nil {
+	if err = h.init(ctx); err != nil {
 		return err
 	}
 
@@ -233,7 +233,7 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 	}
 
 	h.log.Debug("send scan params")
-	if err := h.Send(ctx, &h.params.scanParams, nil); err != nil {
+	if err = h.Send(ctx, &h.params.scanParams, nil); err != nil {
 		return fmt.Errorf("unable to send scan params: %w", err)
 	}
 	return nil
@@ -599,11 +599,7 @@ func (h *HCI) handleLEAdvertisingReport(b []byte) error {
 			a = newAdvertisement(e, i)
 		}
 
-		h.Add(1)
-		go func(advertisement *Advertisement) {
-			defer h.Done()
-			h.advHandler(a)
-		}(a)
+		h.advHandler(a)
 	}
 
 	return nil

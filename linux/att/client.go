@@ -15,7 +15,7 @@ type NotificationHandler interface {
 
 // Client implementa an Attribute Protocol Client.
 type Client struct {
-	sync.WaitGroup
+	wg sync.WaitGroup
 
 	l2c  ble.Conn
 	rspc chan []byte
@@ -44,7 +44,7 @@ func (c *Client) Connection() ble.Conn {
 	return c.l2c
 }
 
-func (c *Client) take() (*[]byte,error) {
+func (c *Client) take() (*[]byte, error) {
 	select {
 	case txBuf := <-c.chTxBuf:
 		return &txBuf, nil
@@ -55,7 +55,7 @@ func (c *Client) take() (*[]byte,error) {
 
 func (c *Client) release(txBuf *[]byte) {
 	select {
-	case c.chTxBuf <- *txBuf :
+	case c.chTxBuf <- *txBuf:
 	case <-c.l2c.Disconnected():
 	}
 }
@@ -539,7 +539,7 @@ func (c *Client) sendCmd(b []byte) error {
 func (c *Client) sendReq(b []byte) (rsp []byte, err error) {
 	//logger.Debug("client: req: % X", b)
 	if _, err := c.l2c.Write(b); err != nil {
-		return nil, fmt.Errorf( "send ATT request failed: %w", err)
+		return nil, fmt.Errorf("send ATT request failed: %w", err)
 	}
 	for {
 		select {
@@ -555,11 +555,11 @@ func (c *Client) sendReq(b []byte) (rsp []byte, err error) {
 			//logger.Debug("client: req: % X", b)
 			_, err := c.l2c.Write(errRsp)
 			if err != nil {
-				return nil, fmt.Errorf( "unexpected ATT response received: %w", err)
+				return nil, fmt.Errorf("unexpected ATT response received: %w", err)
 			}
 		case err := <-c.chErr:
 			if err != nil {
-				return nil, fmt.Errorf( "ATT request failed: %w", err)
+				return nil, fmt.Errorf("ATT request failed: %w", err)
 			}
 		case <-c.l2c.Disconnected():
 			return nil, errors.New("l2c disconnected")
@@ -569,7 +569,7 @@ func (c *Client) sendReq(b []byte) (rsp []byte, err error) {
 
 // Loop ...
 func (c *Client) Loop() {
-	defer c.Wait()
+	defer c.wg.Wait()
 
 	type asyncWork struct {
 		handle func([]byte)
@@ -579,9 +579,9 @@ func (c *Client) Loop() {
 	ch := make(chan asyncWork, 16)
 	defer close(ch)
 
-	c.Add(1)
+	c.wg.Add(1)
 	go func() {
-		defer c.Done()
+		defer c.wg.Done()
 		for w := range ch {
 			w.handle(w.data)
 		}

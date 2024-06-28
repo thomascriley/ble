@@ -23,7 +23,7 @@ type conn struct {
 
 // Server implements an ATT (Attribute Protocol) server.
 type Server struct {
-	sync.WaitGroup
+	wg sync.WaitGroup
 
 	conn *conn
 	db   *DB
@@ -125,7 +125,7 @@ func (s *Server) indicate(h uint16, data []byte) (int, error) {
 
 // Loop accepts incoming ATT request, and respond response.
 func (s *Server) Loop() {
-	defer s.Wait()
+	defer s.wg.Wait()
 
 	type sbuf struct {
 		buf []byte
@@ -134,11 +134,12 @@ func (s *Server) Loop() {
 	pool := make(chan *sbuf, 2)
 	pool <- &sbuf{buf: make([]byte, s.rxMTU)}
 	pool <- &sbuf{buf: make([]byte, s.rxMTU)}
+	defer close(pool)
 
 	seq := make(chan *sbuf)
-	s.Add(1)
+	s.wg.Add(1)
 	go func() {
-		defer s.Done()
+		defer s.wg.Done()
 		b := <-pool
 		for {
 			n, err := s.conn.Read(b.buf)

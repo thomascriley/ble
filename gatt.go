@@ -2,8 +2,8 @@ package ble
 
 import (
 	"context"
-	"fmt"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -144,7 +144,7 @@ func Connect(ctx context.Context, f AdvFilter) (Client, error) {
 		}
 	}
 	if err := Scan(ctx2, false, fn, f); err != nil {
-		if err != context.Canceled {
+		if !errors.Is(err, context.Canceled) {
 			return nil, fmt.Errorf("can't scan: %w", err)
 		}
 	}
@@ -160,4 +160,3 @@ func Connect(ctx context.Context, f AdvFilter) (Client, error) {
 
 // A NotificationHandler handles notification or indication from a server.
 type NotificationHandler func(req []byte)
-

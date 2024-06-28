@@ -21,7 +21,7 @@ var (
 // Client implements an Attribute Protocol Client.
 type Client struct {
 	sync.RWMutex
-	sync.WaitGroup
+	wg sync.WaitGroup
 
 	l2c   ble.Conn
 	p2p   chan []byte
@@ -77,28 +77,27 @@ func (c *Client) DialContext(ctx context.Context) (err error) {
 		select {
 		case <-timeout.Done():
 			_ = c.close(nil)
-			err = errors.New("could not dial: timed out")
 		case <-success.Done():
 		}
 	}(ctx, success)
 
-	c.Add(1)
-	go func() {
-		defer c.Done()
-		c.loop()
-	}()
+	c.wg.Add(1)
+	go c.loop()
 
-	if err2 := c.connect(ctx); err2 != nil {
+	if err = c.connect(ctx); err != nil {
 		_ = c.close(nil)
-		if err == nil {
-			err = fmt.Errorf("could not dial: %s", err2)
+		select {
+		case <-ctx.Done():
+			return errors.Join(err, errors.New("could not dial: timed out"))
+		default:
+			return fmt.Errorf("failed to dial: %w", err)
 		}
 	}
 	return
 }
 
 func (c *Client) close(ctx context.Context) error {
-	defer c.Wait()
+	defer c.wg.Wait()
 	_ = c.sendDISC()
 	if ctx == nil {
 		var cancel context.CancelFunc
@@ -388,11 +387,12 @@ func (c *Client) sendFlowControl(on bool) error {
 	}
 	m.SetCommandResponse(0x01)
 
-	if err := c.sendMultiplexerFrame(m); err != nil {
+	var err error
+	if err = c.sendMultiplexerFrame(m); err != nil {
 		return err
 	}
 
-	m, err := c.getMultiplexerFrame()
+	m, err = c.getMultiplexerFrame()
 	if err != nil {
 		return err
 	}
@@ -424,7 +424,8 @@ func (c *Client) sendModemStatus() error {
 		IncomingCall:       IncomingCall,
 		DataValid:          ValidData,
 	}
-	if err := c.sendMultiplexerFrame(frm); err != nil {
+	var err error
+	if err = c.sendMultiplexerFrame(frm); err != nil {
 		return err
 	}
 
@@ -441,7 +442,7 @@ func (c *Client) sendModemStatus() error {
 	// acknowledge the remote's modem status
 	ms.CommandResponse = 0x00
 	ms.ServerChannel = c.serverChannel
-	if err := c.sendMultiplexerFrame(ms); err != nil {
+	if err = c.sendMultiplexerFrame(ms); err != nil {
 		return err
 	}
 
@@ -634,6 +635,7 @@ func (c *Client) getFrame() (*frame, error) {
 
 // Loop ...
 func (c *Client) loop() {
+	defer c.wg.Done()
 	for {
 		n, err := c.l2c.Read(c.rxBuf)
 		if err != nil {
