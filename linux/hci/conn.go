@@ -85,8 +85,13 @@ type Conn struct {
 	// request
 	cfgRequest chan struct{}
 
+	// chDisconnect called with disconnect complete event from hci
+	chDisconnect chan []byte
+
 	chInPkt chan packet
 	chInPDU chan pdu
+
+	chRecombine chan error
 
 	// Host to Controller Data Flow Control pkt-based Data flow control for LE-U [Vol 2, Part E, 4.1.1]
 	// chSentBufs tracks the HCI buffer occupied by this connection.
@@ -116,9 +121,13 @@ type Conn struct {
 
 	// leFrame is set to be true when the LE Credit based flow control is used.
 	leFrame bool
+
+	log *slog.Logger
+
+	disconnectHandler func(*Conn)
 }
 
-func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
+func newConn(h *HCI, param ConnectionCompleteEvent, disconnectHandler func(*Conn), log *slog.Logger) *Conn {
 	var (
 		sigCID     uint16
 		defaultMTU int
@@ -145,26 +154,31 @@ func newConn(h *HCI, param ConnectionCompleteEvent) *Conn {
 		sigRxMTU: defaultMTU,
 		sigTxMTU: defaultMTU,
 
-		cfgRequest: make(chan struct{}),
+		cfgRequest:   make(chan struct{}),
+		chDisconnect: make(chan []byte),
 
 		chInPkt: make(chan packet, 16),
 		chInPDU: make(chan pdu, 16),
 
 		txBuffer: NewClient(h.pool),
 
-		chDone: make(chan struct{}),
+		chDone:            make(chan struct{}),
+		chRecombine:       make(chan error),
+		log:               log,
+		disconnectHandler: disconnectHandler,
 	}
 
 	c.Add(1)
 	go func() {
 		defer c.Done()
+		c.log.Debug("Recombine loop exited")
+		var err error
 		for {
-			if err := c.recombine(); err != nil {
-				if err != io.EOF {
-					// TODO: wrap and pass the error up.
-					h.log.Warn("recombine failed", log.Error(err))
+			if err = c.recombine(); err != nil {
+				if errors.Is(err, io.EOF) {
+					return
 				}
-				close(c.chInPDU)
+				_ = c.close(context.Background())
 				return
 			}
 		}
@@ -209,7 +223,7 @@ func (c *Conn) Read(sdu []byte) (n int, err error) {
 	}
 	for buf.Len() < sLen {
 		select {
-		case p := <-c.chInPDU:
+		case p = <-c.chInPDU:
 			if _, err = buf.Write(p.payload()); err != nil {
 				return 0, fmt.Errorf("unable to write payload to buffer: %w", err)
 			}
@@ -222,17 +236,17 @@ func (c *Conn) Read(sdu []byte) (n int, err error) {
 	return sLen, nil
 }
 
-// Write breaks down a L2CAP SDU into segmants [Vol 3, Part A, 7.3.1]
+// Write breaks down a L2CAP SDU into segments [Vol 3, Part A, 7.3.1]
 func (c *Conn) Write(sdu []byte) (int, error) {
 	if len(sdu) > c.txMTU {
 		return 0, fmt.Errorf("payload exceeds mtu: %w", io.ErrShortWrite)
 	}
 
-	plen := len(sdu)
-	if plen > c.txMTU {
-		plen = c.txMTU
+	pLen := len(sdu)
+	if pLen > c.txMTU {
+		pLen = c.txMTU
 	}
-	b := make([]byte, 4+plen)
+	b := make([]byte, 4+pLen)
 	binary.LittleEndian.PutUint16(b[0:2], uint16(len(sdu)))
 	binary.LittleEndian.PutUint16(b[2:4], c.SourceID)
 	if c.leFrame {
@@ -245,26 +259,26 @@ func (c *Conn) Write(sdu []byte) (int, error) {
 	if err != nil {
 		return sent, fmt.Errorf("unable to write pdu: %w", err)
 	}
-	sdu = sdu[plen:]
+	sdu = sdu[pLen:]
 
+	var n int
 	for len(sdu) > 0 {
-		plen := len(sdu)
-		if plen > c.txMTU {
-			plen = c.txMTU
+		pLen = len(sdu)
+		if pLen > c.txMTU {
+			pLen = c.txMTU
 		}
-		n, err := c.writePDU(sdu[:plen])
+		n, err = c.writePDU(sdu[:pLen])
 		sent += n
 		if err != nil {
 			return sent, fmt.Errorf("unable to write pdu: %w", err)
 		}
-		sdu = sdu[plen:]
+		sdu = sdu[pLen:]
 	}
 	return sent, nil
 }
 
 // writePDU breaks down a L2CAP PDU into fragments if it's larger than the HCI buffer size. [Vol 3, Part A, 7.2.1]
-func (c *Conn) writePDU(pdu []byte) (int, error) {
-	sent := 0
+func (c *Conn) writePDU(pdu []byte) (sent int, err error) {
 	flags := uint16(pbfHostToControllerStart << 4) // ACL boundary flags
 
 	// All L2CAP fragments associated with an L2CAP PDU shall be processed for
@@ -284,35 +298,36 @@ func (c *Conn) writePDU(pdu []byte) (int, error) {
 	default:
 	}
 
+	var buf *bytes.Buffer
 	for len(pdu) > 0 {
 
 		// Get a buffer from our pre-allocated and flow-controlled pool.
-		pkt := c.txBuffer.Get(c.chDone) // ACL pkt
-		if pkt == nil {
+		buf = c.txBuffer.Get(c.chDone) // ACL pkt
+		if buf == nil {
 			return sent, errors.New("timed out")
 		}
 
 		flen := len(pdu) // fragment length
-		if flen > pkt.Cap()-1-4 {
-			flen = pkt.Cap() - 1 - 4
+		if flen > buf.Cap()-1-4 {
+			flen = buf.Cap() - 1 - 4
 		}
 
 		// Prepare the Headers
 
 		// HCI Header: pkt Type
-		if err := binary.Write(pkt, binary.LittleEndian, pktTypeACLData); err != nil {
+		if err = binary.Write(buf, binary.LittleEndian, pktTypeACLData); err != nil {
 			return 0, fmt.Errorf("unable to write ACL data: %w", err)
 		}
 		// ACL Header: handle and flags
-		if err := binary.Write(pkt, binary.LittleEndian, c.param.ConnectionHandle()|(flags<<8)); err != nil {
+		if err = binary.Write(buf, binary.LittleEndian, c.param.ConnectionHandle()|(flags<<8)); err != nil {
 			return 0, fmt.Errorf("unable to write ACL header with handle and flags: %w", err)
 		}
 		// ACL Header: data len
-		if err := binary.Write(pkt, binary.LittleEndian, uint16(flen)); err != nil {
+		if err = binary.Write(buf, binary.LittleEndian, uint16(flen)); err != nil {
 			return 0, fmt.Errorf("unable to write ACL header with data len: %w", err)
 		}
 		// Append payload
-		if err := binary.Write(pkt, binary.LittleEndian, pdu[:flen]); err != nil {
+		if err = binary.Write(buf, binary.LittleEndian, pdu[:flen]); err != nil {
 			return 0, fmt.Errorf("unable to write pdu: %w", err)
 		}
 
@@ -325,7 +340,7 @@ func (c *Conn) writePDU(pdu []byte) (int, error) {
 		default:
 		}
 
-		if _, err := c.hci.skt.Write(pkt.Bytes()); err != nil {
+		if _, err = c.hci.skt.Write(buf.Bytes()); err != nil {
 			return sent, fmt.Errorf("unable to write packet to socket: %w", err)
 		}
 		sent += flen
@@ -343,14 +358,14 @@ func (c *Conn) recombine() error {
 		ok  bool
 	)
 	select {
-	case pkt, ok = <-c.chInPkt:
-		if !ok {
-			return io.EOF
-		}
 	case <-c.hci.Closed():
 		return io.EOF
 	case <-c.Disconnected():
 		return io.EOF
+	case pkt, ok = <-c.chInPkt:
+		if !ok {
+			return io.EOF
+		}
 	}
 
 	p := pdu(pkt.data())
@@ -374,15 +389,15 @@ func (c *Conn) recombine() error {
 	}
 	for len(p) < 4+p.dlen() {
 		select {
+		case <-c.hci.Closed():
+			return io.EOF
+		case <-c.Disconnected():
+			return io.EOF
 		case pkt, ok = <-c.chInPkt:
 			if !ok || (pkt.pbf()&pbfContinuing) == 0 {
 				return io.ErrUnexpectedEOF
 			}
 			p = append(p, pdu(pkt.data())...)
-		case <-c.hci.Closed():
-			return io.EOF
-		case <-c.Disconnected():
-			return io.EOF
 		}
 	}
 
@@ -422,18 +437,81 @@ func (c *Conn) Disconnected() <-chan struct{} {
 
 // Close disconnects the connection by sending hci disconnect command to the device.
 func (c *Conn) Close(ctx context.Context) error {
-	defer c.Wait()
+	select {
+	case <-c.Disconnected():
+		return nil
+	default:
+	}
+
+	disconnectCMD := &cmd.Disconnect{
+		ConnectionHandle: c.param.ConnectionHandle(),
+		Reason:           0x13,
+	}
+	if err := c.hci.Send(ctx, disconnectCMD, nil); err != nil {
+		return fmt.Errorf("unable to send disconnect command: %w", err)
+	}
+
+	return c.close(ctx)
+}
+
+func (c *Conn) close(ctx context.Context) error {
+	// wait for disconnect complete
 	select {
 	case <-ctx.Done():
 	case <-c.Disconnected():
+		c.log.Debug("Already disconnected")
+		return nil
+	case <-c.chDisconnect:
+	}
+
+	// remote peripheral disconnected
+	select {
+	case <-c.chDone:
 	default:
-		disconnectCMD := &cmd.Disconnect{
-			ConnectionHandle: c.param.ConnectionHandle(),
-			Reason:           0x13,
+		c.log.Debug("Closing connection")
+		close(c.chDone)
+	}
+	defer close(c.chDisconnect)
+
+	c.log.Debug("Waiting for connection to clean up")
+
+	c.Wait()
+
+	c.log.Debug("Releasing for connection resources")
+
+	close(c.chInPkt)
+	close(c.cfgRequest)
+	close(c.chInPDU)
+
+	// When a connection disconnects, all the sent packets and weren't acked yet
+	// will be recycled. [Vol2, Part E 4.1.1]
+	//
+	// must be done with the pool locked to avoid race conditions where
+	// writePDU is in progress and does a Get from the pool after this completes,
+	// leaking a buffer from the main pool.
+	c.txBuffer.LockPool()
+	c.txBuffer.PutAll()
+	c.txBuffer.UnlockPool()
+
+	c.log.Debug("Calling disconnect handler")
+	c.disconnectHandler(c)
+
+	if c.param.Role() == roleSlave {
+		// Re-enable advertising, if it was advertising. Refer to the
+		// handleLEConnectionComplete() for details.
+		// This may fail with ErrCommandDisallowed, if the controller
+		// was actually in advertising state. It does no harm though.
+		c.hci.params.RLock()
+		if c.hci.params.advEnable.AdvertisingEnable == 1 {
+			c.hci.Add(1)
+			go func() {
+				defer c.hci.Done()
+				if err := c.hci.Send(context.Background(), &c.hci.params.advEnable, nil); err != nil {
+					c.hci.err = fmt.Errorf("unable to reenable advertising: %w", err)
+				}
+			}()
 		}
-		if err := c.hci.Send(ctx, disconnectCMD, nil); err != nil {
-			return fmt.Errorf("unable to send disconnect command: %w", err)
-		}
+		c.hci.params.RUnlock()
 	}
 	return nil
 }

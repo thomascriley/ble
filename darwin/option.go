@@ -2,6 +2,7 @@ package darwin
 
 import (
 	"errors"
+	"github.com/thomascriley/ble"
 	"time"
 
 	"github.com/thomascriley/ble/linux/hci/cmd"
@@ -14,7 +15,7 @@ func (d *Device) SetConnectedHandler(f func(evt.LEConnectionComplete)) error {
 }
 
 // SetDisconnectedHandler sets handler to be called on disconnect.
-func (d *Device) SetDisconnectedHandler(f func(evt.DisconnectionComplete)) error {
+func (d *Device) SetDisconnectedHandler(f func(ble.Conn)) error {
 	return errors.New("Not supported")
 }
 

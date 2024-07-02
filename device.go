@@ -60,4 +60,7 @@ type Device interface {
 
 	// Closed returns a channel that is closed when the underlying socket closes
 	Closed() <-chan struct{}
+
+	// DisconnectedHandler
+	SetDisconnectedHandler(func(Conn)) error
 }

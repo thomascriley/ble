@@ -85,6 +85,10 @@ func (d *Device) Closed() <-chan struct{} {
 	return d.HCI.Closed()
 }
 
+func (d *Device) SetDisconnectedHandler(f func(ble.Conn)) error {
+	return d.HCI.SetDisconnectedHandler(f)
+}
+
 // blocking call
 func (d *Device) Serve(name string, handler ble.NotifyHandler) (err error) {
 	if d.Server, err = gatt.NewServerWithNameAndHandler(name, handler); err != nil {
@@ -323,13 +327,13 @@ func (d *Device) DialBLE(ctx context.Context, address ble.Addr, addressType ble.
 		return nil, ctx.Err()
 	default:
 	}
-	fmt.Println("temporarily stopping scan")
 	if err = d.tempStop(); err != nil {
 		return nil, fmt.Errorf("failed to temporary stop scan: %w", err)
 	}
-	cli, err = d.HCI.Dial(ctx, address, addressType)
-	fmt.Println("restarting scan")
-	d.tempStart()
+	defer d.tempStart()
+	if cli, err = d.HCI.Dial(ctx, address, addressType); err == nil {
+		_, err = cli.DiscoverProfile(false)
+	}
 	return cli, err
 }
 
@@ -373,7 +377,7 @@ func (d *Device) inquire(ctx context.Context, interval time.Duration) error {
 }
 
 // tempStop temporarily stops scanning or inquiring (this is done when connecting)
-func (d *Device) tempStop() error {
+func (d *Device) tempStop() (err error) {
 	select {
 	case <-d.scanTempStopped:
 		d.scanTempStopped = make(chan bool)
@@ -384,10 +388,10 @@ func (d *Device) tempStop() error {
 		d.inquireTempStopped = make(chan bool)
 	default:
 	}
-	if err := d.tempStopScan(); err != nil {
+	if err = d.tempStopScan(); err != nil {
 		return err
 	}
-	if err := d.tempStopInquiry(); err != nil {
+	if err = d.tempStopInquiry(); err != nil {
 		d.trigger(d.tempStartScan)
 		return err
 	}
@@ -410,95 +414,100 @@ func (d *Device) tempStart() {
 
 func (d *Device) tempStopScan() error {
 	if !d.scanRequested {
+		d.log.Debug("BLE: tempStopScan: scan no longer requested")
 		return nil
 	}
-	slog.Debug("BLE: temporarily stopping scan")
+	d.log.Debug("BLE: temporarily stopping scan")
 	if err := d.stopScan(); err != nil {
 		return err
 	}
-	slog.Debug("BLE: temporarily stopped scan")
-	return nil
-}
-
-func (d *Device) tempStopInquiry() error {
-	if !d.inquireRequested {
-		return nil
-	}
-	slog.Debug("BLE: temporarily stopping inquiry")
-	if err := d.stopInquiry(); err != nil {
-		return err
-	}
-	slog.Debug("BLE: temporarily stopped inquiry")
+	d.log.Debug("BLE: temporarily stopped scan")
 	return nil
 }
 
 func (d *Device) tempStartScan(ctx context.Context) {
 	if !d.scanRequested {
+		d.log.Debug("BLE: tempStartScan: scan no longer requested")
 		return
 	}
-	slog.Debug("BLE: temporarily starting scan")
+	d.log.Debug("BLE: temporarily starting scan")
 	if err := d.startScan(ctx, d.allowDup); err != nil {
 		select {
 		case d.scanErr <- err:
 		default:
 		}
-		slog.Debug("BLE: failed to temporarily start inquiry", slog.String("Error", err.Error()))
+		d.log.Debug("BLE: failed to temporarily start inquiry", slog.String("Error", err.Error()))
 		return
 	}
-	slog.Debug("BLE: temporarily started scan")
+	d.log.Debug("BLE: temporarily started scan")
 }
 
 func (d *Device) tempStartInquiry(ctx context.Context) {
 	if !d.inquireRequested {
 		return
 	}
-	slog.Debug("BLE: temporarily starting inquiry")
+	d.log.Debug("BLE: temporarily starting inquiry")
 	if err := d.startInquiry(ctx, d.interval); err != nil {
 		select {
 		case d.scanErr <- err:
 		default:
 		}
-		slog.Debug("BLE: failed to temporarily start inquiry", slog.String("Error", err.Error()))
+		d.log.Debug("BLE: failed to temporarily start inquiry", slog.String("Error", err.Error()))
 		return
 	}
-	slog.Debug("BLE: temporarily started inquiry")
+	d.log.Debug("BLE: temporarily started inquiry")
+}
+
+func (d *Device) tempStopInquiry() error {
+	if !d.inquireRequested {
+		return nil
+	}
+	d.log.Debug("BLE: temporarily stopping inquiry")
+	if err := d.stopInquiry(); err != nil {
+		return err
+	}
+	d.log.Debug("BLE: temporarily stopped inquiry")
+	return nil
 }
 
 func (d *Device) trigger(fns ...func(ctx context.Context)) {
+	d.log.Debug("BLE: triggering")
+	// trigger with context
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// cancel context if device closes
 	d.wg.Add(1)
 	go func(ctx context.Context, cancel context.CancelFunc) {
-		defer d.wg.Done()
 		select {
 		case <-ctx.Done():
+			d.log.Debug("BLE: trigger: context closed")
 		case <-d.Closed():
-			cancel()
+			d.log.Debug("BLE: trigger: device closed")
 		}
+		cancel()
+		d.wg.Done()
 	}(ctx, cancel)
 
-	// trigger with context
-	d.wg.Add(1)
-	go func(ctx context.Context) {
-		defer d.wg.Done()
-		defer cancel()
-		for _, fn := range fns {
-			fn(ctx)
-		}
-	}(ctx)
+	for _, fn := range fns {
+		fn(ctx)
+	}
 }
 
 func (d *Device) startScan(ctx context.Context, allowDup bool) error {
 	d.scanMutex.Lock()
 	defer d.scanMutex.Unlock()
 
+	d.log.Debug("BLE: startScan")
 	if d.scanning {
+		d.log.Debug("BLE: startScan: already scanning")
 		return nil
 	}
+	d.log.Debug("BLE: startScan: starting device scan")
 	if err := d.HCI.Scan(ctx, allowDup); err != nil {
 		return fmt.Errorf("ble failed to start scan: %w", err)
 	}
+	d.log.Debug("BLE: startScan: started device scan")
 	d.allowDup = allowDup
 	d.scanning = true
 	return nil
@@ -508,15 +517,19 @@ func (d *Device) stopScan() error {
 	d.scanMutex.Lock()
 	defer d.scanMutex.Unlock()
 
+	d.log.Debug("BLE: stopScan")
 	if !d.scanning {
+		d.log.Debug("BLE: stopScan: already not scanning")
 		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
+	d.log.Debug("BLE: stopScan: stopping device scan")
 	if err := d.HCI.StopScanning(ctx); err != nil {
 		return fmt.Errorf("ble failed to stop scanning: %w", err)
 	}
+	d.log.Debug("BLE: stopScan: stopped device scan")
 	d.scanning = false
 	return nil
 }

@@ -1,10 +1,10 @@
 package hci
 
 import (
-	"net"
 	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/adv"
 	"github.com/thomascriley/ble/linux/hci/evt"
+	"net"
 )
 
 // [Vol 6, Part B, 4.4.2] [Vol 3, Part C, 11]
@@ -29,6 +29,9 @@ type Advertisement struct {
 
 	// cached packets.
 	p *adv.Packet
+
+	addr       ble.Addr
+	addrString string
 }
 
 // setScanResponse associate the response to the existing advertisement.
@@ -42,7 +45,8 @@ func (a *Advertisement) packets() *adv.Packet {
 	if a.p != nil {
 		return a.p
 	}
-	return adv.NewRawPacket(a.Data(), a.ScanResponse())
+	a.p = adv.NewRawPacket(a.Data(), a.ScanResponse())
+	return a.p
 }
 
 // LocalName returns the LocalName of the remote peripheral.
@@ -93,8 +97,18 @@ func (a *Advertisement) RSSI() int {
 
 // Addr returns the address of the remote peripheral.
 func (a *Advertisement) Address() ble.Addr {
-	b := a.e.Address(a.i)
-	return net.HardwareAddr([]byte{b[5], b[4], b[3], b[2], b[1], b[0]})
+	if a.addr == nil {
+		b := a.e.Address(a.i)
+		a.addr = net.HardwareAddr([]byte{b[5], b[4], b[3], b[2], b[1], b[0]})
+	}
+	return a.addr
+}
+
+func (a *Advertisement) AddressString() string {
+	if a.addrString == "" {
+		a.addrString = a.Address().String()
+	}
+	return a.addrString
 }
 
 // EventType returns the event type of Advertisement.

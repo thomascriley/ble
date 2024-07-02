@@ -28,15 +28,19 @@ func (h *HCI) Scan(ctx context.Context, allowDup bool) error {
 		h.params.scanEnable.FilterDuplicates = 0
 	}
 	h.params.scanEnable.LEScanEnable = 1
-	h.adHist = make(map[string]*Advertisement, 128)
-	h.adTimes = make(map[string]time.Time, 128)
+	h.stoppedScanning = false
 	return h.Send(ctx, &h.params.scanEnable, nil)
 }
 
 // StopScanning stops scanning.
-func (h *HCI) StopScanning(ctx context.Context) error {
+func (h *HCI) StopScanning(ctx context.Context) (err error) {
 	h.params.scanEnable.LEScanEnable = 0
-	return h.Send(ctx, &h.params.scanEnable, nil)
+	if err = h.Send(ctx, &h.params.scanEnable, nil); err != nil {
+		return err
+	}
+	h.stoppedScanning = true
+	h.adHist.Purge()
+	return nil
 }
 
 // AdvertiseAdv advertises a given Advertisement, context is used for timing out long running send command to the hci

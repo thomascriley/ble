@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +16,8 @@ import (
 	"github.com/thomascriley/ble/linux/hci/socket"
 	"github.com/thomascriley/ble/linux/smp"
 	"github.com/thomascriley/ble/log"
+
+	"github.com/hashicorp/golang-lru/v2/expirable"
 )
 
 // Command ...
@@ -58,8 +59,7 @@ func NewHCI(log *slog.Logger) *HCI {
 		subh:     map[int]handlerFn{},
 		subMutex: &sync.RWMutex{},
 
-		adHist:  make(map[string]*Advertisement, 0),
-		adTimes: make(map[string]time.Time, 0),
+		adHist: expirable.NewLRU[string, *Advertisement](1000, nil, 5*time.Minute),
 
 		dynamicCID: cidDynamicStart,
 
@@ -70,6 +70,8 @@ func NewHCI(log *slog.Logger) *HCI {
 		chSlaveConn:       make(chan *Conn),
 
 		log: log.With("device", "hci"),
+
+		stoppedScanning: false,
 
 		//done: make(chan bool),
 	}
@@ -106,7 +108,7 @@ type HCI struct {
 	addr    net.HardwareAddr
 	txPwrLv int
 
-	// adHist tracks the history of past scannable advertising packets.
+	// adHist tracks the history of past advertising packets.
 	// Controller delivers AD(Advertising Data) and SR(Scan Response) separately
 	// through HCI. Upon receiving an AD, no matter it's scannable or not, we
 	// pass a Advertisement (AD only) to advHandler immediately.
@@ -114,9 +116,7 @@ type HCI struct {
 	// device, and pass the Advertisiement (AD+SR) to advHandler.
 	// The adHist and adLast are allocated in the Scan().
 	advHandler ble.AdvHandler
-	adHist     map[string]*Advertisement
-	adTimes    map[string]time.Time
-	adMutex    sync.RWMutex
+	adHist     *expirable.LRU[string, *Advertisement]
 
 	// Inquiry scan handler
 	inqHandler ble.InqHandler
@@ -139,7 +139,7 @@ type HCI struct {
 	chSlaveConn       chan *Conn // Peripheral accept slave connections.
 
 	connectedHandler    func(evt.LEConnectionComplete)
-	disconnectedHandler func(evt.DisconnectionComplete)
+	disconnectedHandler func(ble.Conn)
 
 	// SMP capabilities
 	smpCapabilites smp.Capabilities
@@ -149,6 +149,8 @@ type HCI struct {
 
 	initialized bool
 	log         *slog.Logger
+
+	stoppedScanning bool
 	//done chan bool
 }
 
@@ -240,36 +242,30 @@ func (h *HCI) Init(ctx context.Context) (err error) {
 }
 
 // Close ...
-func (h *HCI) Close() error {
+func (h *HCI) Close() (err error) {
+	defer h.log.Debug("closed")
 	defer h.Wait()
-
-	errored := make([]string, 0)
-	if h.skt != nil {
-		// 2 seconds to close all connections
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-
-		h.log.Debug("closing connections")
-		// close connections to all peripherals
-		h.muConns.Lock()
-		for _, c := range h.conns {
-			// 200 milliseconds to close each connection
-			subCtx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
-			if err := c.Close(subCtx); err != nil {
-				errored = append(errored, err.Error())
-			}
-			cancel()
-		}
-		h.muConns.Unlock()
-
-		h.log.Debug("closing socket")
-		if err := h.skt.Close(); err != nil {
-			errored = append(errored, err.Error())
-		}
+	if h.skt == nil {
+		return nil
 	}
-	h.log.Debug("closed")
-	if len(errored) > 0 {
-		return fmt.Errorf("unable to nicely close: %s", strings.Join(errored, ", "))
+	// 2 seconds to close all connections
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	h.log.Debug("closing connections")
+	// close connections to all peripherals
+	h.muConns.Lock()
+	for _, c := range h.conns {
+		// 200 milliseconds to close each connection
+		subCtx, subCancel := context.WithTimeout(ctx, 300*time.Millisecond)
+		err = errors.Join(err, c.Close(subCtx))
+		subCancel()
+	}
+	h.muConns.Unlock()
+
+	h.log.Debug("closing socket")
+	if err = errors.Join(h.skt.Close()); err != nil {
+		return fmt.Errorf("unable to nicely close: %w", err)
 	}
 	return nil
 }
@@ -355,7 +351,11 @@ func (h *HCI) init(ctx context.Context) error {
 
 // Send ...
 func (h *HCI) Send(ctx context.Context, c Command, r CommandRP) error {
-	h.log.Debug("sending command", slog.Int("opcode", c.OpCode()), slog.String("response", fmt.Sprintf("%T", r)))
+	h.log.Debug("sending command",
+		slog.Int("opcode", c.OpCode()),
+		slog.String("content", fmt.Sprintf("%#v", c)),
+		slog.String("response", fmt.Sprintf("%T", r)))
+
 	// reuse the byte array, marshalling the new command into it
 	var b []byte
 	select {
@@ -401,9 +401,6 @@ func (h *HCI) Send(ctx context.Context, c Command, r CommandRP) error {
 		h.sentMutex.Unlock()
 	}()
 
-	// emergency timeout to prevent calls from locking up if the HCI
-	// interface doesn't respond.  Response here should normally be fast
-	// a timeout indicates a major problem with HCI.
 	for {
 		select {
 		case <-ctx.Done():
@@ -413,7 +410,7 @@ func (h *HCI) Send(ctx context.Context, c Command, r CommandRP) error {
 				return errors.New("hci: no response to command: disconnected")
 			}
 			return fmt.Errorf("hci: no response to command: disconnected: %w", h.err)
-		case b := <-p.done:
+		case b = <-p.done:
 			if len(b) > 0 && b[0] != 0x00 {
 				return ErrCommand(b[0])
 			}
@@ -455,9 +452,10 @@ func (h *HCI) subHandler(code int) (handlerFn, bool) {
 
 func (h *HCI) sktLoop() {
 	var (
-		n   int
-		err error
-		b   = make([]byte, 4096)
+		n    int
+		err  error
+		err2 error
+		b    = make([]byte, 4096)
 	)
 	for {
 		// wait for read packet or for the socket to close
@@ -475,7 +473,7 @@ func (h *HCI) sktLoop() {
 		switch {
 		case err == nil:
 		case errors.Is(err, ErrUnknownCommand), errors.Is(err, ErrUnsupportedCommand):
-			if err2 := h.setAllowedCommands(1); err2 != nil {
+			if err2 = h.setAllowedCommands(1); err2 != nil {
 				h.log.Warn("failed to set allowed commands after read error", slog.String("allowed error", err2.Error()), log.Error(err))
 			}
 		case errors.Is(err, ErrUnsupportedVendorPacket):
@@ -516,13 +514,15 @@ func (h *HCI) handleACL(b []byte) error {
 		return nil
 	}
 	select {
-	case c.chInPkt <- b:
-		return nil
+	case <-c.Disconnected():
+		return fmt.Errorf("disconnected: %w", h.err)
 	case <-h.Closed():
 		if h.err == nil {
 			return errors.New("hci: no response to command: disconnected")
 		}
 		return fmt.Errorf("hci device disconnected: %w", h.err)
+	case c.chInPkt <- b:
+		return nil
 	}
 }
 
@@ -551,10 +551,10 @@ func (h *HCI) handleEvt(b []byte) error {
 	return fmt.Errorf("unsupported event packet: % X", b)
 }
 
-func (h *HCI) handleLEMeta(b []byte) error {
+func (h *HCI) handleLEMeta(b []byte) (err error) {
 	subcode := int(b[0])
 	if f, found := h.subHandler(subcode); found {
-		err := f(b)
+		err = f(b)
 		switch subcode {
 		case evt.LEAdvertisingReportSubCode:
 			return nil
@@ -566,35 +566,28 @@ func (h *HCI) handleLEMeta(b []byte) error {
 }
 
 func (h *HCI) handleLEAdvertisingReport(b []byte) error {
-	if h.advHandler == nil {
+	if h.advHandler == nil || h.stoppedScanning {
 		return nil
 	}
 
+	var a *Advertisement
+
 	e := evt.LEAdvertisingReport(b)
 	for i := 0; i < int(e.NumReports()); i++ {
-		var a *Advertisement
 		switch e.EventType(i) {
 		case evtTypAdvScanInd, evtTypAdvInd:
 			a = newAdvertisement(e, i)
-			h.adMutex.Lock()
-			h.adHist[a.Address().String()] = a
-			h.adTimes[a.Address().String()] = time.Now()
-			for addr, stamp := range h.adTimes {
-				if stamp.Add(5 * time.Minute).Before(time.Now()) {
-					delete(h.adTimes, addr)
-					delete(h.adHist, addr)
-				}
-			}
-			h.adMutex.Unlock()
+			h.adHist.Add(a.AddressString(), a)
 		case evtTypScanRsp:
 			var ok bool
 			sr := newAdvertisement(e, i)
-
+			addr := sr.AddressString()
 			// Got a SR without having received an associated AD before?
-			if a, ok = h.adHist[sr.Address().String()]; !ok {
-				return fmt.Errorf("received scan response %s with no associated Advertising Data packet", sr.Address())
+			if a, ok = h.adHist.Get(addr); !ok {
+				return fmt.Errorf("received scan response %s with no associated Advertising Data packet. Advertising packet was most likely removed due to noise or delay", addr)
 			}
 			a.setScanResponse(sr)
+			h.adHist.Add(addr, a)
 		default:
 			a = newAdvertisement(e, i)
 		}
@@ -646,9 +639,23 @@ func (h *HCI) handleCommandStatus(b []byte) error {
 	}
 }
 
+func (h *HCI) handleDisconnect(c *Conn) {
+	h.log.Debug("Removing connection: %d", c.param.ConnectionHandle())
+	h.muConns.Lock()
+	delete(h.conns, c.param.ConnectionHandle())
+	h.muConns.Unlock()
+
+	if h.disconnectedHandler != nil {
+		h.disconnectedHandler(c)
+	}
+}
 func (h *HCI) handleLEConnectionComplete(b []byte) error {
 	e := evt.LEConnectionComplete(b)
-	c := newConn(h, e)
+	handle := e.ConnectionHandle()
+
+	c := newConn(h, e, h.handleDisconnect, h.log.With(slog.Uint64("handle", uint64(handle)), slog.String("addr", fmt.Sprintf("%04X", e.PeerAddress()))))
+
+	h.log.Debug("Adding connection", slog.Uint64("handle", uint64(handle)))
 	h.muConns.Lock()
 	h.conns[e.ConnectionHandle()] = c
 	h.muConns.Unlock()
@@ -663,7 +670,7 @@ func (h *HCI) handleLEConnectionComplete(b []byte) error {
 				return fmt.Errorf("hci device closed: %w", h.err)
 			}
 		}
-		if ErrCommand(e.Status()) == ErrConnID {
+		if e.Status() == uint8(ErrConnID) {
 			// The connection was canceled successfully.
 			return nil
 		}
@@ -703,6 +710,7 @@ func (h *HCI) handleLEConnectionComplete(b []byte) error {
 
 func (h *HCI) handleLEConnectionUpdateComplete(b []byte) error {
 	e := evt.LEConnectionUpdateComplete(b)
+	h.log.Debug("LE connection update complete", slog.Uint64("handle", uint64(e.ConnectionHandle())))
 	h.muConns.Lock()
 	c, ok := h.conns[e.ConnectionHandle()]
 	h.muConns.Unlock()
@@ -714,54 +722,39 @@ func (h *HCI) handleLEConnectionUpdateComplete(b []byte) error {
 
 func (h *HCI) handleDisconnectionComplete(b []byte) error {
 	e := evt.DisconnectionComplete(b)
+	handle := e.ConnectionHandle()
+
+	h.log.Debug("Received disconnect complete", log.Uint16("handle", handle))
+
 	h.muConns.Lock()
-	c, found := h.conns[e.ConnectionHandle()]
-	delete(h.conns, e.ConnectionHandle())
+	c, found := h.conns[handle]
 	h.muConns.Unlock()
 
 	if !found {
 		return fmt.Errorf("disconnecting an invalid handle %04X", e.ConnectionHandle())
 	}
 
-	close(c.chInPkt)
+	defer h.log.Debug("Disconnect complete finished", log.Uint16("handle", handle))
 
-	if c.param.Role() == roleSlave {
-		// Re-enable advertising, if it was advertising. Refer to the
-		// handleLEConnectionComplete() for details.
-		// This may failed with ErrCommandDisallowed, if the controller
-		// was actually in advertising state. It does no harm though.
-		h.params.RLock()
-		if h.params.advEnable.AdvertisingEnable == 1 {
-			h.Add(1)
-			go func() {
-				defer h.Done()
-				if err := h.Send(context.Background(), &h.params.advEnable, nil); err != nil {
-					h.err = fmt.Errorf("unable to reenable advertising: %w", err)
-				}
-			}()
-		}
-		h.params.RUnlock()
-	} else {
-		// remote peripheral disconnected
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		defer h.log.Debug("exiting disconnected complete routine", log.Uint16("handle", handle))
 		select {
-		case <-c.chDone:
-		default:
-			close(c.chDone)
+		case <-c.Disconnected():
+		case c.chDisconnect <- e:
 		}
-	}
+	}()
+	go func() {
+		defer wg.Done()
+		defer h.log.Debug("existing close routine", log.Uint16("handle", handle))
+		_ = c.close(context.Background())
+	}()
 
-	// When a connection disconnects, all the sent packets and weren't acked yet
-	// will be recycled. [Vol2, Part E 4.1.1]
-	//
-	// must be done with the pool locked to avoid race conditions where
-	// writePDU is in progress and does a Get from the pool after this completes,
-	// leaking a buffer from the main pool.
-	c.txBuffer.LockPool()
-	c.txBuffer.PutAll()
-	c.txBuffer.UnlockPool()
-	if h.disconnectedHandler != nil {
-		h.disconnectedHandler(e)
-	}
+	h.log.Debug("waiting for routines", log.Uint16("handle", handle))
+	wg.Wait()
+
 	return nil
 }
 
@@ -769,14 +762,19 @@ func (h *HCI) handleNumberOfCompletedPackets(b []byte) error {
 	e := evt.NumberOfCompletedPackets(b)
 	h.muConns.Lock()
 	defer h.muConns.Unlock()
+
+	var (
+		j     int
+		c     *Conn
+		found bool
+	)
 	for i := 0; i < int(e.NumberOfHandles()); i++ {
-		c, found := h.conns[e.ConnectionHandle(i)]
-		if !found {
+		if c, found = h.conns[e.ConnectionHandle(i)]; !found {
 			continue
 		}
 
 		// Put the delivered buffers back to the pool.
-		for j := 0; j < int(e.HCNumOfCompletedPackets(i)); j++ {
+		for j = 0; j < int(e.HCNumOfCompletedPackets(i)); j++ {
 			c.txBuffer.Put()
 		}
 	}
@@ -844,10 +842,16 @@ func (h *HCI) handleInquiryWithRSSI(b []byte) error {
 func (h *HCI) handleConnectionComplete(b []byte) error {
 
 	e := evt.ConnectionComplete(b)
-	c := newConn(h, e)
+	c := newConn(h, e, h.handleDisconnect, h.log.With(slog.String("handle", fmt.Sprintf("%04X", e.PeerAddress()))))
 
+	handle := e.ConnectionHandle()
+
+	c.log.Debug("Connected: %d", handle)
 	h.muConns.Lock()
-	h.conns[e.ConnectionHandle()] = c
+	if _, ok := h.conns[handle]; ok {
+		h.log.Debug("Handle already exists: %d", handle)
+	}
+	h.conns[handle] = c
 	h.muConns.Unlock()
 
 	if e.Status() == 0x00 {
@@ -858,7 +862,7 @@ func (h *HCI) handleConnectionComplete(b []byte) error {
 			return fmt.Errorf("hci device closed: %w", h.err)
 		}
 	}
-	if ErrCommand(e.Status()) == ErrConnID {
+	if e.Status() == uint8(ErrConnID) {
 		// The connection was canceled successfully.
 		return nil
 	}
@@ -869,7 +873,10 @@ func (h *HCI) handleReadRemoteSupportedFeaturesComplete(b []byte) error {
 	e := evt.ReadRemoteSupportedFeaturesComplete(b)
 	if e.Status() == 0x00 {
 		h.muConns.Lock()
-		h.conns[e.ConnectionHandle()].lmpFeatures = e.LMPFeatures()
+		c, ok := h.conns[e.ConnectionHandle()]
+		if ok {
+			c.lmpFeatures = e.LMPFeatures()
+		}
 		h.muConns.Unlock()
 	}
 
@@ -905,16 +912,16 @@ func (h *HCI) handleMaxSlotsChange(_ []byte) error {
 func (h *HCI) handleReadRemoteNameRequestCompleteEvent(b []byte) error {
 	e := evt.RemoteNameRequestComplete(b)
 
-	nameEvent := &nameEvent{}
+	nEvent := &nameEvent{}
 	if e.Status() == 0x00 {
 		name := e.RemoteName()
 		i := bytes.IndexByte(name[:], 0x00)
 		if i == -1 {
 			i = len(name)
 		}
-		nameEvent.name = string(name[0:i])
+		nEvent.name = string(name[0:i])
 	} else {
-		nameEvent.err = fmt.Errorf("the remote name request command failed: %X", e.Status())
+		nEvent.err = fmt.Errorf("the remote name request command failed: %X", e.Status())
 	}
 
 	h.nameHandlers.Lock()
@@ -924,7 +931,7 @@ func (h *HCI) handleReadRemoteNameRequestCompleteEvent(b []byte) error {
 		return fmt.Errorf("received remote name request complete from unknown address: %X", e.BDADDR())
 	}
 	select {
-	case ch <- nameEvent:
+	case ch <- nEvent:
 		return nil
 	case <-h.Closed():
 		return fmt.Errorf("hci device closed: %w", h.err)

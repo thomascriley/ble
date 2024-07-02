@@ -538,12 +538,12 @@ func (c *Client) sendCmd(b []byte) error {
 
 func (c *Client) sendReq(b []byte) (rsp []byte, err error) {
 	//logger.Debug("client: req: % X", b)
-	if _, err := c.l2c.Write(b); err != nil {
+	if _, err = c.l2c.Write(b); err != nil {
 		return nil, fmt.Errorf("send ATT request failed: %w", err)
 	}
 	for {
 		select {
-		case rsp := <-c.rspc:
+		case rsp = <-c.rspc:
 			if rsp[0] == ErrorResponseCode || rsp[0] == rspOfReq[b[0]] {
 				return rsp, nil
 			}
@@ -553,11 +553,10 @@ func (c *Client) sendReq(b []byte) (rsp []byte, err error) {
 			// the response to our request.
 			errRsp := newErrorResponse(rsp[0], 0x0000, ble.ErrReqNotSupp)
 			//logger.Debug("client: req: % X", b)
-			_, err := c.l2c.Write(errRsp)
-			if err != nil {
+			if _, err = c.l2c.Write(errRsp); err != nil {
 				return nil, fmt.Errorf("unexpected ATT response received: %w", err)
 			}
-		case err := <-c.chErr:
+		case err = <-c.chErr:
 			if err != nil {
 				return nil, fmt.Errorf("ATT request failed: %w", err)
 			}

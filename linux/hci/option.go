@@ -2,6 +2,7 @@ package hci
 
 import (
 	"errors"
+	"github.com/thomascriley/ble"
 	"github.com/thomascriley/ble/linux/hci/cmd"
 	"github.com/thomascriley/ble/linux/hci/evt"
 	"github.com/thomascriley/ble/linux/smp"
@@ -32,7 +33,7 @@ func (h *HCI) SetConnectedHandler(f func(complete evt.LEConnectionComplete)) err
 }
 
 // SetDisconnectedHandler sets handler to be called on disconnect.
-func (h *HCI) SetDisconnectedHandler(f func(evt.DisconnectionComplete)) error {
+func (h *HCI) SetDisconnectedHandler(f func(ble.Conn)) error {
 	h.disconnectedHandler = f
 	return nil
 }

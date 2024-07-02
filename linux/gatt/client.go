@@ -27,6 +27,7 @@ func NewClient(log *slog.Logger, conn ble.Conn) (*Client, error) {
 			slog.String("proto", "GATT"),
 		),
 	}
+	p.log.Debug("Created new client: " + p.addr)
 	p.ac = att.NewClient(conn, p)
 	p.Add(1)
 	go func() {
