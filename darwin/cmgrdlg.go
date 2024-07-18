@@ -7,8 +7,8 @@ package darwin
 
 import (
 	"fmt"
-	"github.com/thomascriley/ble"
 	"github.com/JuulLabs-OSS/cbgo"
+	"github.com/thomascriley/ble"
 )
 
 func (d *Device) CentralManagerDidUpdateState(cmgr cbgo.CentralManager) {
@@ -56,7 +56,7 @@ func (d *Device) DidConnectPeripheral(_ cbgo.CentralManager, prph cbgo.Periphera
 }
 
 func (d *Device) DidDisconnectPeripheral(cmgr cbgo.CentralManager, prph cbgo.Peripheral, err error) {
-	fmt.Printf("device disconnected: %s", prph.Identifier())
+	//fmt.Printf("device disconnected: %s\n", prph.Identifier())
 	if c, ok := d.findConn(ble.NewAddr(prph.Identifier().String())); ok {
 		select {
 		case <-c.done:
@@ -64,6 +64,6 @@ func (d *Device) DidDisconnectPeripheral(cmgr cbgo.CentralManager, prph cbgo.Per
 			close(c.done)
 		}
 	} else {
-		fmt.Printf("failed to find disconnected peripheral: %s", prph.Identifier())
+		fmt.Printf("failed to find disconnected peripheral: %s\n", prph.Identifier())
 	}
 }

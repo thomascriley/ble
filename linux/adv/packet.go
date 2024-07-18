@@ -36,7 +36,9 @@ func NewPacket(fields ...Field) (*Packet, error) {
 func NewRawPacket(bytes ...[]byte) *Packet {
 	p := &Packet{b: make([]byte, 0, MaxEIRPacketLength)}
 	for _, b := range bytes {
-		p.b = append(p.b, b...)
+		if b != nil {
+			p.b = append(p.b, b...)
+		}
 	}
 	return p
 }
@@ -187,10 +189,17 @@ func (p *Packet) Field(typ byte) []byte {
 func (p *Packet) getUUIDsByType(typ byte, u []ble.UUID, w int) []ble.UUID {
 	pos := 0
 	var b []byte
+	var n int
 	for pos < len(p.b) {
-		if b, pos = p.fieldPos(typ, pos); b != nil {
+		//fmt.Printf("p.b: %X, type: %X, offset: %d\n", p.b, typ, pos)
+		if b, n = p.fieldPos(typ, pos); b != nil {
 			u = uuidList(u, b, w)
 		}
+		// prevent infinite looping for missing type when incomplete uuid
+		if n == pos {
+			return u
+		}
+		pos = n
 	}
 	return u
 }
@@ -245,6 +254,9 @@ func (p *Packet) LocalName() string {
 // TxPower returns the TxPower, if it presents.
 func (p *Packet) TxPower() (power int, present bool) {
 	b := p.Field(txPower)
+	if b == nil {
+		return 0, false
+	}
 	if len(b) < 3 {
 		return 0, false
 	}
@@ -300,8 +312,14 @@ func (p *Packet) ManufacturerData() []byte {
 
 // Utility function for creating a list of uuids.
 func uuidList(u []ble.UUID, d []byte, w int) []ble.UUID {
+	if u == nil {
+		u = make([]ble.UUID, 0)
+	}
+	if d == nil {
+		return u
+	}
 	for len(d) >= w {
-		u = append(u, ble.UUID(d[:w]))
+		u = append(u, d[:w])
 		d = d[w:]
 	}
 	return u

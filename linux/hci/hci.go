@@ -592,6 +592,8 @@ func (h *HCI) handleLEAdvertisingReport(b []byte) error {
 			a = newAdvertisement(e, i)
 		}
 
+		//fmt.Printf("LE ADV: " + a.AddressString() + " : " + a.LocalName() + "\n")
+
 		h.advHandler(a)
 	}
 
